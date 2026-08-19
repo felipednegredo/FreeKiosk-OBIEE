@@ -6,7 +6,15 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform, PermissionsAndroid, Alert } from 'react-native';
 import RNFS from 'react-native-fs';
-import { hasSecurePin, getSecureApiKey, saveSecureApiKey, getSecureMqttPassword, saveSecureMqttPassword } from './secureStorage';
+import {
+  hasSecurePin,
+  getSecureApiKey,
+  saveSecureApiKey,
+  getSecureMqttPassword,
+  saveSecureMqttPassword,
+  getSecureBasicAuthPassword,
+  saveSecureBasicAuthPassword,
+} from './secureStorage';
 
 // All storage keys to backup
 const BACKUP_KEYS = [
@@ -123,6 +131,9 @@ const BACKUP_KEYS = [
   '@kiosk_beta_updates_enabled',
   // Managed Apps (Multi-App mode, accessibility, keep-alive)
   '@kiosk_managed_apps',
+  // HTTP Basic Auth & Oracle OBI
+  '@kiosk_http_basic_auth_username',
+  '@kiosk_oracle_auto_login_enabled',
   // Note: MQTT password is handled separately via Keychain (secure storage)
   // Legacy keys
   '@screensaver_delay',
@@ -240,6 +251,13 @@ export async function buildBackupJson(): Promise<{ success: boolean; json?: stri
       if (mqttPassword) settings['@kiosk_mqtt_password'] = mqttPassword;
     } catch (e) {
       console.warn('Failed to read MQTT password from secure storage:', e);
+    }
+
+    try {
+      const basicAuthPassword = await getSecureBasicAuthPassword();
+      if (basicAuthPassword) settings['@kiosk_basic_auth_password'] = basicAuthPassword;
+    } catch (e) {
+      console.warn('Failed to read Basic Auth password from secure storage:', e);
     }
 
     const hasPinConfigured = await hasSecurePin();
@@ -386,6 +404,9 @@ export async function importBackup(filePath: string): Promise<{ success: boolean
           } else if (key === '@kiosk_mqtt_password') {
             await saveSecureMqttPassword(value);
             console.log('[BackupService] MQTT password imported to secure storage');
+          } else if (key === '@kiosk_basic_auth_password') {
+            await saveSecureBasicAuthPassword(value);
+            console.log('[BackupService] Basic Auth password imported to secure storage');
           } else {
             await AsyncStorage.setItem(key, value);
           }
@@ -440,6 +461,9 @@ export async function importBackupFromContent(jsonContent: string, fileName?: st
           } else if (key === '@kiosk_mqtt_password') {
             await saveSecureMqttPassword(value);
             console.log('[BackupService] MQTT password imported to secure storage');
+          } else if (key === '@kiosk_basic_auth_password') {
+            await saveSecureBasicAuthPassword(value);
+            console.log('[BackupService] Basic Auth password imported to secure storage');
           } else {
             await AsyncStorage.setItem(key, value);
           }

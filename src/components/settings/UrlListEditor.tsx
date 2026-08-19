@@ -13,13 +13,17 @@ import {
   Alert,
 } from 'react-native';
 import { Colors, Spacing, Typography } from '../../theme';
+import { RotationUrl, getUrlString } from '../../types/rotation';
 
 interface UrlListEditorProps {
-  urls: string[];
-  onUrlsChange: (urls: string[]) => void;
+  urls: (string | RotationUrl)[];
+  onUrlsChange: (urls: (string | RotationUrl)[]) => void;
   maxUrls?: number; // 0 or undefined = unlimited (for patterns), default 10 for URLs
   /** Pattern mode: accept wildcards (*), skip URL normalization */
   patternMode?: boolean;
+  /** Rotation mode: allow per-URL duration */
+  rotationMode?: boolean;
+  defaultInterval?: string;
   placeholder?: string;
   emptyTitle?: string;
   emptyHint?: string;
@@ -30,6 +34,8 @@ const UrlListEditor: React.FC<UrlListEditorProps> = ({
   onUrlsChange,
   maxUrls = 10,
   patternMode = false,
+  rotationMode = false,
+  defaultInterval = '30',
   placeholder,
   emptyTitle,
   emptyHint,
@@ -98,12 +104,13 @@ const UrlListEditor: React.FC<UrlListEditorProps> = ({
     const normalized = normalizeUrl(newUrl);
     
     // Check for duplicates
-    if (urls.includes(normalized)) {
+    if (urls.some(u => getUrlString(u) === normalized)) {
       Alert.alert('Duplicate', 'This URL is already in the list');
       return;
     }
 
-    onUrlsChange([...urls, normalized]);
+    const newItem = rotationMode ? { url: normalized } : normalized;
+    onUrlsChange([...urls, newItem]);
     setNewUrl('');
   };
 
@@ -114,16 +121,28 @@ const UrlListEditor: React.FC<UrlListEditorProps> = ({
 
   const handleMoveUp = (index: number) => {
     if (index === 0) return;
-    const newUrls = [...urls];
-    [newUrls[index - 1], newUrls[index]] = [newUrls[index], newUrls[index - 1]];
-    onUrlsChange(newUrls);
+    const newItems = [...urls];
+    [newItems[index - 1], newItems[index]] = [newItems[index], newItems[index - 1]];
+    onUrlsChange(newItems);
   };
 
   const handleMoveDown = (index: number) => {
     if (index === urls.length - 1) return;
-    const newUrls = [...urls];
-    [newUrls[index], newUrls[index + 1]] = [newUrls[index + 1], newUrls[index]];
-    onUrlsChange(newUrls);
+    const newItems = [...urls];
+    [newItems[index], newItems[index + 1]] = [newItems[index + 1], newItems[index]];
+    onUrlsChange(newItems);
+  };
+
+  const handleIntervalChange = (index: number, text: string) => {
+    const newItems = [...urls];
+    const current = newItems[index];
+    const urlStr = getUrlString(current);
+
+    const numericValue = text.replace(/[^0-9]/g, '');
+    const interval = numericValue ? parseInt(numericValue, 10) : undefined;
+
+    newItems[index] = { url: urlStr, interval };
+    onUrlsChange(newItems);
   };
 
   return (
@@ -131,43 +150,66 @@ const UrlListEditor: React.FC<UrlListEditorProps> = ({
       {/* URL List */}
       {urls.length > 0 ? (
         <View style={styles.urlList}>
-          {urls.map((url, index) => (
-            <View key={index} style={styles.urlItem}>
-              <View style={styles.urlInfo}>
-                <Text style={styles.urlIndex}>{index + 1}</Text>
-                <Text style={styles.urlText} numberOfLines={1}>
-                  {url.replace(/^https?:\/\//, '')}
-                </Text>
-              </View>
-              
-              <View style={styles.urlActions}>
-                {/* Move buttons */}
-                <TouchableOpacity
-                  style={[styles.actionButton, index === 0 && styles.actionButtonDisabled]}
-                  onPress={() => handleMoveUp(index)}
-                  disabled={index === 0}
-                >
-                  <Text style={styles.actionButtonText}>▲</Text>
-                </TouchableOpacity>
+          {urls.map((item, index) => {
+            const urlStr = getUrlString(item);
+            const interval = typeof item === 'object' ? item.interval : undefined;
+
+            return (
+              <View key={index} style={styles.urlItemWrapper}>
+                <View style={styles.urlItem}>
+                  <View style={styles.urlInfo}>
+                    <Text style={styles.urlIndex}>{index + 1}</Text>
+                    <Text style={styles.urlText} numberOfLines={1}>
+                      {urlStr.replace(/^https?:\/\//, '')}
+                    </Text>
+                  </View>
+
+                  <View style={styles.urlActions}>
+                    {/* Move buttons */}
+                    <TouchableOpacity
+                      style={[styles.actionButton, index === 0 && styles.actionButtonDisabled]}
+                      onPress={() => handleMoveUp(index)}
+                      disabled={index === 0}
+                    >
+                      <Text style={styles.actionButtonText}>▲</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.actionButton, index === urls.length - 1 && styles.actionButtonDisabled]}
+                      onPress={() => handleMoveDown(index)}
+                      disabled={index === urls.length - 1}
+                    >
+                      <Text style={styles.actionButtonText}>▼</Text>
+                    </TouchableOpacity>
+
+                    {/* Delete button */}
+                    <TouchableOpacity
+                      style={[styles.actionButton, styles.deleteButton]}
+                      onPress={() => handleRemoveUrl(index)}
+                    >
+                      <Text style={styles.deleteButtonText}>✕</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
                 
-                <TouchableOpacity
-                  style={[styles.actionButton, index === urls.length - 1 && styles.actionButtonDisabled]}
-                  onPress={() => handleMoveDown(index)}
-                  disabled={index === urls.length - 1}
-                >
-                  <Text style={styles.actionButtonText}>▼</Text>
-                </TouchableOpacity>
-                
-                {/* Delete button */}
-                <TouchableOpacity
-                  style={[styles.actionButton, styles.deleteButton]}
-                  onPress={() => handleRemoveUrl(index)}
-                >
-                  <Text style={styles.deleteButtonText}>✕</Text>
-                </TouchableOpacity>
+                {rotationMode && (
+                  <View style={styles.intervalRow}>
+                    <Text style={styles.intervalLabel}>Custom Duration:</Text>
+                    <TextInput
+                      style={styles.intervalInput}
+                      value={interval !== undefined ? String(interval) : ''}
+                      onChangeText={(text) => handleIntervalChange(index, text)}
+                      placeholder={defaultInterval}
+                      placeholderTextColor={Colors.textHint}
+                      keyboardType="numeric"
+                      maxLength={5}
+                    />
+                    <Text style={styles.intervalUnit}>seconds</Text>
+                  </View>
+                )}
               </View>
-            </View>
-          ))}
+            );
+          })}
         </View>
       ) : (
         <View style={styles.emptyState}>
@@ -216,13 +258,17 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
     marginBottom: Spacing.md,
   },
+  urlItemWrapper: {
+    backgroundColor: Colors.surfaceVariant,
+    borderRadius: Spacing.inputRadius,
+    padding: Spacing.xs,
+    gap: 4,
+  },
   urlItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.surfaceVariant,
-    borderRadius: Spacing.inputRadius,
-    padding: Spacing.sm,
-    paddingLeft: Spacing.md,
+    padding: Spacing.xs,
+    paddingLeft: Spacing.sm,
   },
   urlInfo: {
     flex: 1,
@@ -248,6 +294,39 @@ const styles = StyleSheet.create({
   urlActions: {
     flexDirection: 'row',
     gap: 4,
+  },
+  intervalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.sm,
+    paddingBottom: Spacing.xs,
+    gap: Spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: Colors.divider,
+    paddingTop: 4,
+    marginTop: 4,
+  },
+  intervalLabel: {
+    ...Typography.hint,
+    color: Colors.textSecondary,
+    fontSize: 11,
+  },
+  intervalInput: {
+    width: 45,
+    height: 24,
+    backgroundColor: Colors.surface,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    paddingHorizontal: 4,
+    ...Typography.hint,
+    fontSize: 12,
+    textAlign: 'center',
+    color: Colors.textPrimary,
+  },
+  intervalUnit: {
+    ...Typography.hint,
+    fontSize: 11,
   },
   actionButton: {
     width: 32,

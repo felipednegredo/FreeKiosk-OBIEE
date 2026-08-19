@@ -47,6 +47,7 @@ interface WebViewComponentProps {
   disableUserZoom?: boolean; // Prevent pinch-to-zoom and double-tap zoom
   customUserAgent?: string; // Custom User-Agent string (empty = default modern Chrome UA)
   basicAuthCredential?: { username: string; password: string };
+  oracleAutoLoginEnabled?: boolean;
   onRenderProcessGone?: (didCrash: boolean) => void; // #198 — renderer process died, ask parent to remount
 }
 
@@ -86,6 +87,7 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
   disableUserZoom = false,
   customUserAgent = '',
   basicAuthCredential,
+  oracleAutoLoginEnabled = false,
   onRenderProcessGone,
 }, ref) => {
   const navigation = useNavigation<NavigationProp>();
@@ -98,6 +100,12 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<boolean>(false);
   const [pageLoaded, setPageLoaded] = useState<boolean>(false);
+
+  // Oracle Analytics Auto Login State
+  const [webViewSource, setWebViewSource] = useState<{ uri?: string; method?: string; body?: string; headers?: any }>({ uri: url });
+  const oracleLoginAttemptsRef = useRef<{ count: number; firstAttempt: number }>({ count: 0, firstAttempt: 0 });
+  const oracleCooldownRef = useRef<number>(0);
+
   const [blockedUrlMessage, setBlockedUrlMessage] = useState<string | null>(null);
   // App version for the error-overlay footer — read from the installed APK (build.gradle)
   // via UpdateModule rather than hardcoded, so it never drifts on release bumps.
@@ -259,6 +267,10 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
       .then(info => setAppVersion(info.versionName))
       .catch(() => {});
   }, []);
+
+  React.useEffect(() => {
+    setWebViewSource({ uri: url });
+  }, [url]);
 
   // Execute JavaScript from API — with retry if page is still loading
   React.useEffect(() => {
@@ -935,7 +947,7 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
     <View style={styles.container} ref={containerViewRef}>
       <WebView
         ref={webViewRef}
-        source={{ uri: error ? 'about:blank' : url }}
+        source={error ? { uri: 'about:blank' } : webViewSource}
         style={styles.webview}
         
         // User Agent - Modern Chrome on Android to avoid WAF blocks (e.g. SiteGround)
@@ -1102,6 +1114,66 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
           if (onPageNavigated && navState.url) {
             onPageNavigated(navState.url);
           }
+
+          // Oracle Analytics / DV Auto Login Logic
+          if (oracleAutoLoginEnabled && navState.url && basicAuthCredential?.username) {
+            const navUrl = navState.url.toLowerCase();
+
+            // Detect Oracle login page redirect
+            if (navUrl.includes('/bi-security-login/login.jsp')) {
+              const now = Date.now();
+
+              // Rate limiting / Cooldown protection
+              if (now < oracleCooldownRef.current) {
+                console.log('[OracleLogin] Cooldown active, skipping auto-login');
+                return;
+              }
+
+              // Track attempts (max 3 per minute)
+              const attempts = oracleLoginAttemptsRef.current;
+              if (now - attempts.firstAttempt > 60000) {
+                attempts.count = 1;
+                attempts.firstAttempt = now;
+              } else {
+                attempts.count++;
+              }
+
+              if (attempts.count > 3) {
+                console.warn('[OracleLogin] Too many attempts, entering 15s cooldown');
+                oracleCooldownRef.current = now + 15000;
+                return;
+              }
+
+              // Derive Oracle base URL from current navigation (security: must match domain)
+              const urlParts = navState.url.match(/^(https?:\/\/[^/]+)/i);
+              if (urlParts && urlParts[1]) {
+                const oracleBase = urlParts[1];
+                const loginPostUrl = `${oracleBase}/bi-security-login/login`;
+
+                console.log('[OracleLogin] Redirect detected, performing POST login to:', loginPostUrl);
+
+                // Perform POST login using react-native-webview native source
+                // Form body must be application/x-www-form-urlencoded
+                const body = `j_username=${encodeURIComponent(basicAuthCredential.username)}&j_password=${encodeURIComponent(basicAuthCredential.password)}&j_msi=none`;
+
+                setWebViewSource({
+                  uri: loginPostUrl,
+                  method: 'POST',
+                  body: body,
+                  headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                  }
+                });
+
+                // Reset loading state to show spinner during POST
+                setLoading(true);
+              }
+            } else if (navUrl.includes('/dv/ui') || navUrl.includes('/analytics/saw.dll')) {
+              // Reset attempts when we reach the actual app
+              oracleLoginAttemptsRef.current.count = 0;
+            }
+          }
+
           // URL Filtering: catch SPA/client-side navigations (pushState, router.push)
           // that don't trigger onShouldStartLoadWithRequest
           if (navState.url && !isGoingBackRef.current && isUrlBlocked(navState.url)) {

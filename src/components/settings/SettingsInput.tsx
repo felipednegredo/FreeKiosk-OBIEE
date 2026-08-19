@@ -3,8 +3,8 @@
  * A text input with label and validation
  */
 
-import React from 'react';
-import { View, Text, TextInput, StyleSheet, ViewStyle, KeyboardTypeOptions } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, TextInput, StyleSheet, ViewStyle, KeyboardTypeOptions, TouchableOpacity } from 'react-native';
 import { Colors, Spacing, Typography } from '../../theme';
 import Icon, { IconName } from '../Icon';
 
@@ -52,6 +52,8 @@ const SettingsInput: React.FC<SettingsInputProps> = ({
   onBlur,
   onFocus,
 }) => {
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
+
   return (
     <View style={[styles.container, style]}>
       <View style={styles.labelRow}>
@@ -59,36 +61,53 @@ const SettingsInput: React.FC<SettingsInputProps> = ({
         <Text style={[styles.label, disabled && styles.labelDisabled]}>{label}</Text>
       </View>
       
-      <TextInput
-        style={[
-          styles.input,
-          disabled && styles.inputDisabled,
-          error && styles.inputError,
-          multiline && styles.inputMultiline,
-          inputStyle,
-        ]}
-        value={value}
-        onChangeText={onChangeText}
-        placeholder={placeholder}
-        placeholderTextColor={Colors.textHint}
-        keyboardType={keyboardType}
-        secureTextEntry={secureTextEntry}
-        autoCapitalize={autoCapitalize}
-        maxLength={maxLength}
-        editable={!disabled}
-        multiline={multiline}
-        onBlur={onBlur}
-        onFocus={onFocus}
-        cursorColor={Colors.primary}
-        selectionColor={Colors.primaryLight}
-        caretHidden={false}
-        underlineColorAndroid="transparent"
-        autoCorrect={false}
-        spellCheck={false}
-        textContentType="none"
-        importantForAutofill="no"
-        autoComplete="off"
-      />
+      <View style={styles.inputContainer}>
+        <TextInput
+          style={[
+            styles.input,
+            disabled && styles.inputDisabled,
+            error && styles.inputError,
+            multiline && styles.inputMultiline,
+            secureTextEntry && styles.inputWithIcon,
+            inputStyle,
+          ]}
+          value={value}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
+          placeholderTextColor={Colors.textHint}
+          keyboardType={keyboardType}
+          secureTextEntry={secureTextEntry && !isPasswordVisible}
+          autoCapitalize={autoCapitalize}
+          maxLength={maxLength}
+          editable={!disabled}
+          multiline={multiline}
+          onBlur={onBlur}
+          onFocus={onFocus}
+          cursorColor={Colors.primary}
+          selectionColor={Colors.primaryLight}
+          caretHidden={false}
+          underlineColorAndroid="transparent"
+          autoCorrect={false}
+          spellCheck={false}
+          textContentType="none"
+          importantForAutofill="no"
+          autoComplete="off"
+        />
+
+        {secureTextEntry && (
+          <TouchableOpacity
+            style={styles.visibilityToggle}
+            onPress={() => setIsPasswordVisible(!isPasswordVisible)}
+            disabled={disabled}
+          >
+            <Icon
+              name={isPasswordVisible ? 'eye-off' : 'eye'}
+              size={22}
+              color={disabled ? Colors.textDisabled : Colors.textSecondary}
+            />
+          </TouchableOpacity>
+        )}
+      </View>
       
       {error && <Text style={styles.error}>{error}</Text>}
       {hint && !error && <Text style={[styles.hint, disabled && styles.hintDisabled]}>{hint}</Text>}
@@ -114,7 +133,12 @@ const styles = StyleSheet.create({
   labelDisabled: {
     color: Colors.textDisabled,
   },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   input: {
+    flex: 1,
     minHeight: Spacing.inputHeight,
     borderWidth: 1,
     borderColor: Colors.border,
@@ -124,6 +148,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     backgroundColor: Colors.surfaceVariant,
     color: Colors.textPrimary,
+  },
+  inputWithIcon: {
+    paddingRight: 48,
   },
   inputDisabled: {
     backgroundColor: Colors.borderLight,
@@ -137,6 +164,14 @@ const styles = StyleSheet.create({
     height: 100,
     textAlignVertical: 'top',
     paddingTop: Spacing.md,
+  },
+  visibilityToggle: {
+    position: 'absolute',
+    right: 0,
+    height: '100%',
+    width: 48,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   hint: {
     ...Typography.hint,

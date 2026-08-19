@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { View, StyleSheet, TouchableOpacity, TouchableWithoutFeedback, Text, NativeEventEmitter, NativeModules, AppState, DeviceEventEmitter, Dimensions, Pressable, BackHandler, Keyboard } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import RNBrightness from '../utils/BrightnessModule';
@@ -20,6 +20,7 @@ import { ApiService } from '../utils/ApiService';
 import { mqttClient } from '../utils/MqttModule';
 import DeviceControlService from '../services/DeviceControlService';
 import { ScheduledEvent, getActiveEvent } from '../types/planner';
+import { RotationUrl, getUrlString, getUrlInterval } from '../types/rotation';
 import { DashboardTile } from '../types/dashboard';
 import DashboardGrid from '../components/DashboardGrid';
 import type { MediaItem, MediaFitMode } from '../types/mediaPlayer';
@@ -114,10 +115,11 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
   const [returnTapTimeout, setReturnTapTimeout] = useState<number>(1500);
   const [returnMode, setReturnMode] = useState<string>('tap_anywhere');
   const [returnButtonPosition, setReturnButtonPosition] = useState<string>('bottom-right');
-  
+  const [overlayButtonOpacity, setOverlayButtonOpacity] = useState<number>(1.0);
+
   // URL Rotation states
   const [urlRotationEnabled, setUrlRotationEnabled] = useState<boolean>(false);
-  const [urlRotationList, setUrlRotationList] = useState<string[]>([]);
+  const [urlRotationList, setUrlRotationList] = useState<(string | RotationUrl)[]>([]);
   
   // Auto-brightness states
   const [autoBrightnessEnabled, setAutoBrightnessEnabled] = useState<boolean>(false);
@@ -203,6 +205,7 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
   const [customUserAgent, setCustomUserAgent] = useState<string>('');
   const [basicAuthUsername, setBasicAuthUsername] = useState<string>('');
   const [basicAuthPassword, setBasicAuthPassword] = useState<string>('');
+  const [oracleAutoLoginEnabled, setOracleAutoLoginEnabled] = useState<boolean>(false);
 
   // Lock screen quick controls
   const [lockscreenEmergencyEnabled, setLockscreenEmergencyEnabled] = useState<boolean>(false);
@@ -1037,7 +1040,7 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
   useEffect(() => {
     // Clear any existing rotation timer
     if (urlRotationTimerRef.current) {
-      clearInterval(urlRotationTimerRef.current);
+      clearTimeout(urlRotationTimerRef.current);
       urlRotationTimerRef.current = null;
     }
     
@@ -1053,26 +1056,32 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
     ) {
       // Set initial URL to first in list
       if (urlRotationList.length > 0 && currentUrlIndex === 0) {
-        setUrl(urlRotationList[0]);
+        setUrl(getUrlString(urlRotationList[0]));
       }
       
-      // Start rotation timer
-      urlRotationTimerRef.current = setInterval(() => {
+      // Schedule rotation for the NEXT URL
+      const rotate = () => {
         setCurrentUrlIndex(prevIndex => {
           const nextIndex = (prevIndex + 1) % urlRotationList.length;
-          setUrl(urlRotationList[nextIndex]);
+          setUrl(getUrlString(urlRotationList[nextIndex]));
           return nextIndex;
         });
-      }, urlRotationInterval);
+      };
+
+      // Delay is based on the CURRENT URL's interval
+      const currentItem = urlRotationList[currentUrlIndex];
+      const delay = getUrlInterval(currentItem, urlRotationInterval);
+
+      urlRotationTimerRef.current = setTimeout(rotate, delay);
     }
     
     return () => {
       if (urlRotationTimerRef.current) {
-        clearInterval(urlRotationTimerRef.current);
+        clearTimeout(urlRotationTimerRef.current);
         urlRotationTimerRef.current = null;
       }
     };
-  }, [displayMode, urlRotationEnabled, dashboardModeEnabled, urlRotationList, urlRotationInterval, activeScheduledEvent]);
+  }, [displayMode, urlRotationEnabled, dashboardModeEnabled, urlRotationList, urlRotationInterval, activeScheduledEvent, currentUrlIndex]);
 
   // URL Planner effect - checks every minute for scheduled events
   useEffect(() => {
@@ -1568,11 +1577,13 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
       
       // Load return button settings (for WebView mode)
       const savedReturnButtonVisible = bool(K.OVERLAY_BUTTON_VISIBLE, true);
+      const savedOverlayButtonOpacity = num(K.OVERLAY_BUTTON_OPACITY, 1.0);
       const savedReturnTapCount = num(K.RETURN_TAP_COUNT, 5);
       const savedReturnTapTimeout = num(K.RETURN_TAP_TIMEOUT, 1500);
       const savedReturnMode = str(K.RETURN_MODE) ?? 'tap_anywhere';
       const savedReturnButtonPosition = str(K.RETURN_BUTTON_POSITION) ?? 'bottom-right';
       setReturnButtonVisible(savedReturnButtonVisible);
+      setOverlayButtonOpacity(savedOverlayButtonOpacity);
       setReturnTapCount(savedReturnTapCount);
       setReturnTapTimeout(savedReturnTapTimeout);
       setReturnMode(savedReturnMode);
@@ -1580,7 +1591,7 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
       
       // Load URL Rotation settings
       const savedUrlRotationEnabled = bool(K.URL_ROTATION_ENABLED, false);
-      const savedUrlRotationList = jsonParse(K.URL_ROTATION_LIST, []) as string[];
+      const savedUrlRotationList = jsonParse(K.URL_ROTATION_LIST, []) as (string | RotationUrl)[];
       const savedUrlRotationInterval = num(K.URL_ROTATION_INTERVAL, 30);
       setUrlRotationEnabled(savedUrlRotationEnabled);
       setUrlRotationList(savedUrlRotationList);
@@ -1714,7 +1725,10 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
       const savedBasicAuthPassword = await getSecureBasicAuthPassword();
       setBasicAuthUsername(savedBasicAuthUsername);
       setBasicAuthPassword(savedBasicAuthPassword);
-      
+
+      const savedOracleAutoLogin = bool(K.ORACLE_AUTO_LOGIN_ENABLED, false);
+      setOracleAutoLoginEnabled(savedOracleAutoLogin);
+
       // Load Media Player settings
       if (savedDisplayMode === 'media_player') {
         const mpItems = jsonParse(K.MEDIA_PLAYER_ITEMS, []) as MediaItem[];
@@ -2535,6 +2549,16 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
     }, returnTapTimeout - (now - lastTapTimeRef.current));
   };
 
+  const buttonPositionStyle = useMemo(() => {
+    switch (returnButtonPosition) {
+      case 'top-left': return { top: 20, left: 20 };
+      case 'top-right': return { top: 20, right: 20 };
+      case 'bottom-left': return { bottom: 20, left: 20 };
+      case 'bottom-right':
+      default: return { bottom: 20, right: 20 };
+    }
+  }, [returnButtonPosition]);
+
   return (
     <View style={styles.container}>
       {displayMode === 'webview' ? (
@@ -2606,6 +2630,7 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
                   ? { username: basicAuthUsername, password: basicAuthPassword }
                   : undefined
               }
+              oracleAutoLoginEnabled={oracleAutoLoginEnabled}
               onRenderProcessGone={handleWebViewRenderProcessGone}
             />
           )}
@@ -2677,8 +2702,9 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
         <TouchableOpacity 
           style={[
             styles.visualIndicator,
+            buttonPositionStyle,
             {
-              opacity: returnButtonVisible ? 1 : 0,
+              opacity: returnButtonVisible ? overlayButtonOpacity : 0,
               backgroundColor: returnButtonVisible ? '#2196F3' : 'transparent',
             },
           ]}
@@ -2773,8 +2799,6 @@ const styles = StyleSheet.create({
   },
   visualIndicator: {
     position: 'absolute',
-    bottom: 20,
-    right: 20,
     width: 50,
     height: 50,
     backgroundColor: '#2196F3',

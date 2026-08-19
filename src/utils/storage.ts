@@ -4,6 +4,7 @@ import { ScreenScheduleRule } from '../types/screenScheduler';
 import { DashboardTile } from '../types/dashboard';
 import { ManagedApp } from '../types/managedApps';
 import { MediaItem, MediaFitMode } from '../types/mediaPlayer';
+import { RotationUrl } from '../types/rotation';
 import { saveSecureApiKey, getSecureApiKey, clearSecureApiKey, clearSecureMqttPassword } from './secureStorage';
 
 const KEYS = {
@@ -32,6 +33,7 @@ const KEYS = {
   EXTERNAL_APP_MODE: '@kiosk_external_app_mode', // 'single' | 'multi'
   AUTO_RELAUNCH_APP: '@kiosk_auto_relaunch_app',
   OVERLAY_BUTTON_VISIBLE: '@kiosk_overlay_button_visible',
+  OVERLAY_BUTTON_OPACITY: '@kiosk_overlay_button_opacity',
   OVERLAY_BUTTON_POSITION: '@kiosk_overlay_button_position',
   PIN_MAX_ATTEMPTS: '@kiosk_pin_max_attempts',
   STATUS_BAR_ENABLED: '@kiosk_status_bar_enabled',
@@ -174,6 +176,8 @@ const KEYS = {
   LOCKSCREEN_ROTATION_LOCK_ENABLED: '@kiosk_lockscreen_rotation_lock_enabled',
   // HTTP Basic Auth
   HTTP_BASIC_AUTH_USERNAME: '@kiosk_http_basic_auth_username',
+  // Oracle Analytics / DV Auto Login
+  ORACLE_AUTO_LOGIN_ENABLED: '@kiosk_oracle_auto_login_enabled',
 };
 
 export const StorageService = {
@@ -469,6 +473,8 @@ export const StorageService = {
         KEYS.LOCKSCREEN_ROTATION_LOCK_ENABLED,
         // HTTP Basic Auth
         KEYS.HTTP_BASIC_AUTH_USERNAME,
+        // Oracle Analytics
+        KEYS.ORACLE_AUTO_LOGIN_ENABLED,
         // Managed Apps
         KEYS.MANAGED_APPS,
         // Legacy keys
@@ -967,6 +973,25 @@ export const StorageService = {
     }
   },
 
+  //OVERLAY BUTTON OPACITY
+  saveOverlayButtonOpacity: async (value: number): Promise<void> => {
+    try {
+      await AsyncStorage.setItem(KEYS.OVERLAY_BUTTON_OPACITY, JSON.stringify(value));
+    } catch (error) {
+      console.error('Error saving overlay button opacity:', error);
+    }
+  },
+
+  getOverlayButtonOpacity: async (): Promise<number> => {
+    try {
+      const value = await AsyncStorage.getItem(KEYS.OVERLAY_BUTTON_OPACITY);
+      return value === null ? 1.0 : JSON.parse(value); // Default 1.0 (opaque)
+    } catch (error) {
+      console.error('Error getting overlay button opacity:', error);
+      return 1.0;
+    }
+  },
+
   //OVERLAY BUTTON POSITION
   saveOverlayButtonPosition: async (value: string): Promise<void> => {
     try {
@@ -1287,7 +1312,7 @@ export const StorageService = {
     }
   },
 
-  saveUrlRotationList: async (urls: string[]): Promise<void> => {
+  saveUrlRotationList: async (urls: (string | RotationUrl)[]): Promise<void> => {
     try {
       await AsyncStorage.setItem(KEYS.URL_ROTATION_LIST, JSON.stringify(urls));
     } catch (error) {
@@ -1295,7 +1320,7 @@ export const StorageService = {
     }
   },
 
-  getUrlRotationList: async (): Promise<string[]> => {
+  getUrlRotationList: async (): Promise<(string | RotationUrl)[]> => {
     try {
       const value = await AsyncStorage.getItem(KEYS.URL_ROTATION_LIST);
       return value ? JSON.parse(value) : [];
@@ -2731,6 +2756,26 @@ export const StorageService = {
     } catch (error) {
       console.error('Error getting HTTP basic auth username:', error);
       return '';
+    }
+  },
+
+  // ============ ORACLE ANALYTICS AUTO LOGIN ============
+
+  saveOracleAutoLoginEnabled: async (value: boolean): Promise<void> => {
+    try {
+      await AsyncStorage.setItem(KEYS.ORACLE_AUTO_LOGIN_ENABLED, JSON.stringify(value));
+    } catch (error) {
+      console.error('Error saving Oracle auto login enabled:', error);
+    }
+  },
+
+  getOracleAutoLoginEnabled: async (): Promise<boolean> => {
+    try {
+      const value = await AsyncStorage.getItem(KEYS.ORACLE_AUTO_LOGIN_ENABLED);
+      return value ? JSON.parse(value) : false;
+    } catch (error) {
+      console.error('Error getting Oracle auto login enabled:', error);
+      return false;
     }
   },
 

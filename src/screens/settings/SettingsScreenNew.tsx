@@ -45,6 +45,7 @@ import { RecurringEventEditor, OneTimeEventEditor } from '../../components/setti
 import ScreenScheduleRuleEditor from '../../components/settings/ScreenScheduleRuleEditor';
 import { ScheduledEvent } from '../../types/planner';
 import { ScreenScheduleRule } from '../../types/screenScheduler';
+import { RotationUrl } from '../../types/rotation';
 import { ManagedApp } from '../../types/managedApps';
 import { MediaItem, MediaFitMode, generateMediaItemId, detectMediaType } from '../../types/mediaPlayer';
 import FilePickerModule from '../../utils/FilePickerModule';
@@ -110,6 +111,7 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
   const [externalAppPackage, setExternalAppPackage] = useState<string>('');
   const [autoRelaunchApp, setAutoRelaunchApp] = useState<boolean>(true);
   const [overlayButtonVisible, setOverlayButtonVisible] = useState<boolean>(false);
+  const [overlayButtonOpacity, setOverlayButtonOpacity] = useState<number>(1.0);
   const [backButtonMode, setBackButtonMode] = useState<string>('test');
   const [backButtonTimerDelay, setBackButtonTimerDelay] = useState<string>('10');
   const [installedApps, setInstalledApps] = useState<AppInfo[]>([]);
@@ -142,7 +144,7 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
   
   // URL Rotation states
   const [urlRotationEnabled, setUrlRotationEnabled] = useState<boolean>(false);
-  const [urlRotationList, setUrlRotationList] = useState<string[]>([]);
+  const [urlRotationList, setUrlRotationList] = useState<(string | RotationUrl)[]>([]);
   const [urlRotationInterval, setUrlRotationInterval] = useState<string>('30');
   
   // URL Planner states
@@ -219,7 +221,8 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
   const [intercomModeEnabled, setIntercomModeEnabled] = useState<boolean>(false);
   const [basicAuthUsername, setBasicAuthUsername] = useState<string>('');
   const [basicAuthPassword, setBasicAuthPassword] = useState<string>('');
-  
+  const [oracleAutoLoginEnabled, setOracleAutoLoginEnabled] = useState<boolean>(false);
+
   // Media Player states
   const [mediaPlayerItems, setMediaPlayerItems] = useState<MediaItem[]>([]);
   const [mediaPlayerAutoPlay, setMediaPlayerAutoPlay] = useState<boolean>(true);
@@ -490,6 +493,7 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
     const savedExternalAppPackage = await StorageService.getExternalAppPackage();
     const savedAutoRelaunchApp = await StorageService.getAutoRelaunchApp();
     const savedOverlayButtonVisible = await StorageService.getOverlayButtonVisible();
+    const savedOverlayButtonOpacity = await StorageService.getOverlayButtonOpacity();
     const savedPinMaxAttempts = await StorageService.getPinMaxAttempts();
     const savedStatusBarEnabled = await StorageService.getStatusBarEnabled();
     const savedStatusBarOnOverlay = await StorageService.getStatusBarOnOverlay();
@@ -555,6 +559,7 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
     setExternalAppMode(savedExternalAppMode);
 
     setOverlayButtonVisible(savedOverlayButtonVisible);
+    setOverlayButtonOpacity(savedOverlayButtonOpacity);
     setPinMaxAttempts(savedPinMaxAttempts);
     setPinMaxAttemptsText(String(savedPinMaxAttempts));
     const savedPinMode = await StorageService.getPinMode();
@@ -683,6 +688,9 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
     const savedBasicAuthPassword = await getSecureBasicAuthPassword();
     setBasicAuthUsername(savedBasicAuthUsername);
     setBasicAuthPassword(savedBasicAuthPassword);
+
+    const savedOracleAutoLogin = await StorageService.getOracleAutoLoginEnabled();
+    setOracleAutoLoginEnabled(savedOracleAutoLogin);
 
     // Media Player settings
     const savedMediaItems = await StorageService.getMediaPlayerItems();
@@ -930,10 +938,22 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
   const handleOverlayButtonVisibleChange = async (value: boolean) => {
     setOverlayButtonVisible(value);
     if (displayMode === 'external_app') {
-      const opacity = value ? 1.0 : 0.0;
+      const opacity = value ? overlayButtonOpacity : 0.0;
       try {
         const { OverlayServiceModule } = NativeModules;
         await OverlayServiceModule.setButtonOpacity(opacity);
+      } catch (error) {
+        // Silent fail
+      }
+    }
+  };
+
+  const handleOverlayButtonOpacityChange = async (value: number) => {
+    setOverlayButtonOpacity(value);
+    if (displayMode === 'external_app' && overlayButtonVisible) {
+      try {
+        const { OverlayServiceModule } = NativeModules;
+        await OverlayServiceModule.setButtonOpacity(value);
       } catch (error) {
         // Silent fail
       }
@@ -1419,6 +1439,7 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
     await StorageService.saveAutoRelaunchApp(autoRelaunchApp);
     await StorageService.saveManagedApps(managedApps);
     await StorageService.saveOverlayButtonVisible(overlayButtonVisible);
+    await StorageService.saveOverlayButtonOpacity(overlayButtonOpacity);
     await StorageService.saveKeepScreenOn(keepScreenOn);
     await StorageService.saveAutoWakeOnScreenOff(autoWakeOnScreenOff);
     await StorageService.saveStatusBarEnabled(statusBarEnabled);
@@ -1441,6 +1462,7 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
     await StorageService.savePauseWebMediaWhenHidden(pauseWebMediaWhenHidden);
     await StorageService.saveHttpBasicAuthUsername(basicAuthUsername);
     await saveSecureBasicAuthPassword(basicAuthPassword);
+    await StorageService.saveOracleAutoLoginEnabled(oracleAutoLoginEnabled);
     await StorageService.saveAllowPowerButton(allowPowerButton);
     await StorageService.saveBlockFactoryReset(blockFactoryReset);
     await StorageService.saveAllowNotifications(allowNotifications);
@@ -1533,11 +1555,12 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
     }
 
     // Update overlay settings
-    if (displayMode === 'external_app') {
-      const opacity = overlayButtonVisible ? 1.0 : 0.0;
-      try {
-        const { OverlayServiceModule } = NativeModules;
-        await OverlayServiceModule.setButtonOpacity(opacity);
+    const opacity = overlayButtonVisible ? overlayButtonOpacity : 0.0;
+    try {
+      const { OverlayServiceModule } = NativeModules;
+      await OverlayServiceModule.setButtonOpacity(opacity);
+
+      if (displayMode === 'external_app') {
         await OverlayServiceModule.setTestMode(backButtonMode === 'test');
         await OverlayServiceModule.setStatusBarEnabled(statusBarEnabled && statusBarOnOverlay);
         await OverlayServiceModule.setStatusBarItems(showBattery, showWifi, showBluetooth, showVolume, showTime);
@@ -1555,9 +1578,9 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
           autoRelaunchApp,
           allowNotifications
         );
-      } catch (error) {
-        // Silent fail
       }
+    } catch (error) {
+      // Silent fail
     }
 
     // Apply factory-reset restriction independently of Lock Mode (#201). No-op if not Device Owner.
@@ -1687,6 +1710,9 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
               setMediaPlayerTransition(true);
               setMediaPlayerTransitionDuration('500');
               setMediaPlayerMute(false);
+              setBasicAuthUsername('');
+              setBasicAuthPassword('');
+              setOracleAutoLoginEnabled(false);
 
               try {
                 await KioskModule.stopLockTask();
@@ -1925,6 +1951,8 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
             onBasicAuthUsernameChange={setBasicAuthUsername}
             basicAuthPassword={basicAuthPassword}
             onBasicAuthPasswordChange={setBasicAuthPassword}
+            oracleAutoLoginEnabled={oracleAutoLoginEnabled}
+            onOracleAutoLoginEnabledChange={setOracleAutoLoginEnabled}
             onBackToKiosk={() => { revokeSettingsAccess(); navigation.reset({ index: 0, routes: [{ name: 'Kiosk' }] }); }}
           />
         );
@@ -2066,6 +2094,8 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
             onReturnButtonPositionChange={setReturnButtonPosition}
             overlayButtonVisible={overlayButtonVisible}
             onOverlayButtonVisibleChange={handleOverlayButtonVisibleChange}
+            overlayButtonOpacity={overlayButtonOpacity}
+            onOverlayButtonOpacityChange={handleOverlayButtonOpacityChange}
             volumeUp5TapEnabled={volumeUp5TapEnabled}
             onVolumeUp5TapEnabledChange={setVolumeUp5TapEnabled}
             autoLaunchEnabled={autoLaunchEnabled}

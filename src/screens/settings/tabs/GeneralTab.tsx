@@ -21,6 +21,7 @@ import { ManagedApp } from '../../../types/managedApps';
 import { Colors, Spacing, Typography } from '../../../theme';
 import AppLauncherModule, { AppInfo } from '../../../utils/AppLauncherModule';
 import { ScheduledEvent } from '../../../types/planner';
+import { RotationUrl } from '../../../types/rotation';
 import type { MediaItem, MediaFitMode } from '../../../types/mediaPlayer';
 import { generateMediaItemId, detectMediaType, isLocalMedia, getMediaDisplayName } from '../../../types/mediaPlayer';
 import FilePickerModule from '../../../utils/FilePickerModule';
@@ -88,8 +89,8 @@ interface GeneralTabProps {
   // URL Rotation (webview only)
   urlRotationEnabled: boolean;
   onUrlRotationEnabledChange: (value: boolean) => void;
-  urlRotationList: string[];
-  onUrlRotationListChange: (urls: string[]) => void;
+  urlRotationList: (string | RotationUrl)[];
+  onUrlRotationListChange: (urls: (string | RotationUrl)[]) => void;
   urlRotationInterval: string;
   onUrlRotationIntervalChange: (value: string) => void;
   
@@ -154,6 +155,8 @@ interface GeneralTabProps {
   onBasicAuthUsernameChange: (value: string) => void;
   basicAuthPassword: string;
   onBasicAuthPasswordChange: (value: string) => void;
+  oracleAutoLoginEnabled: boolean;
+  onOracleAutoLoginEnabledChange: (value: boolean) => void;
 
   // Navigation
   onBackToKiosk: () => void;
@@ -254,6 +257,8 @@ const GeneralTab: React.FC<GeneralTabProps> = ({
   onBasicAuthUsernameChange,
   basicAuthPassword,
   onBasicAuthPasswordChange,
+  oracleAutoLoginEnabled,
+  onOracleAutoLoginEnabledChange,
   onBackToKiosk,
 }) => {
   return (
@@ -571,31 +576,39 @@ const GeneralTab: React.FC<GeneralTabProps> = ({
         </SettingsSection>
       )}
       
-      {/* HTTP Basic Auth (WebView mode only) */}
+      {/* HTTP Basic Auth & Oracle OBI (WebView mode only) */}
       {displayMode === 'webview' && (
-        <SettingsSection title="Website Authentication" icon="lock-outline">
+        <SettingsSection title="Authentication & OBI" icon="lock-outline">
           <SettingsInput
             label="Username"
             value={basicAuthUsername}
             onChangeText={onBasicAuthUsernameChange}
-            placeholder="Leave empty to disable"
-            hint="Username for HTTP Basic Auth (401 challenges)"
+            placeholder="Username"
+            hint="Used for HTTP Basic Auth and Oracle OBI auto-login"
             autoCapitalize="none"
           />
-          {basicAuthUsername.trim().length > 0 && (
-            <SettingsInput
-              label="Password"
-              value={basicAuthPassword}
-              onChangeText={onBasicAuthPasswordChange}
-              placeholder="Password"
-              secureTextEntry={true}
-              hint="Stored in the device Keychain (not in plain text)"
-              autoCapitalize="none"
-            />
-          )}
+          <SettingsInput
+            label="Password"
+            value={basicAuthPassword}
+            onChangeText={onBasicAuthPasswordChange}
+            placeholder="Password"
+            secureTextEntry={true}
+            hint="Stored in the device Keychain"
+            autoCapitalize="none"
+          />
+
+          <View style={styles.rotationSpacer} />
+
+          <SettingsSwitch
+            label="Oracle Analytics / OBI Auto Login"
+            value={oracleAutoLoginEnabled}
+            onValueChange={onOracleAutoLoginEnabledChange}
+            hint="Automatically log in to Oracle Business Intelligence (OBI) and Data Visualization (DV) pages."
+          />
+
           <SettingsInfoBox variant="info">
             <Text style={styles.infoText}>
-              When a website returns a 401 Unauthorized response, FreeKiosk will automatically reply with these credentials. Leave username empty to disable.
+              Credentials are used for both HTTP 401 challenges and Oracle OBI auto-login redirects.
             </Text>
           </SettingsInfoBox>
         </SettingsSection>
@@ -626,6 +639,8 @@ const GeneralTab: React.FC<GeneralTabProps> = ({
                   <UrlListEditor
                     urls={urlRotationList}
                     onUrlsChange={onUrlRotationListChange}
+                    rotationMode={true}
+                    defaultInterval={urlRotationInterval}
                   />
 
                   <View style={styles.rotationSpacer} />

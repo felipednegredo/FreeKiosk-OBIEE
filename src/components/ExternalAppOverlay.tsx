@@ -21,6 +21,8 @@ interface ExternalAppOverlayProps {
   returnTapTimeout?: number;
   /** Whether the return button is visible (button mode only) */
   returnButtonVisible?: boolean;
+  /** Button opacity: 0.0 to 1.0 */
+  overlayButtonOpacity?: number;
   /** Button position: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' */
   returnButtonPosition?: string;
   showStatusBar?: boolean;
@@ -46,6 +48,7 @@ const ExternalAppOverlay: React.FC<ExternalAppOverlayProps> = ({
   returnMode = 'tap_anywhere',
   returnTapTimeout = 1500,
   returnButtonVisible = false,
+  overlayButtonOpacity = 1.0,
   returnButtonPosition = 'bottom-right',
   showStatusBar = false,
   showBattery = true,
@@ -262,7 +265,7 @@ const ExternalAppOverlay: React.FC<ExternalAppOverlayProps> = ({
               styles.floatingReturnButton,
               buttonPositionStyle,
               {
-                opacity: returnButtonVisible ? 1 : 0,
+                opacity: returnButtonVisible ? overlayButtonOpacity : 0,
                 backgroundColor: returnButtonVisible ? '#2196F3' : 'transparent',
               },
             ]}

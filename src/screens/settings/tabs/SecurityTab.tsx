@@ -14,6 +14,7 @@ import {
   SettingsButton,
   SettingsModeSelector,
   UrlListEditor,
+  SettingsSlider,
 } from '../../../components/settings';
 import { Colors, Spacing, Typography } from '../../../theme';
 
@@ -53,6 +54,8 @@ interface SecurityTabProps {
   onReturnButtonPositionChange: (value: string) => void;
   overlayButtonVisible: boolean;
   onOverlayButtonVisibleChange: (value: boolean) => void;
+  overlayButtonOpacity: number;
+  onOverlayButtonOpacityChange: (value: number) => void;
   volumeUp5TapEnabled: boolean;
   onVolumeUp5TapEnabledChange: (value: boolean) => void;
   
@@ -131,6 +134,8 @@ const SecurityTab: React.FC<SecurityTabProps> = ({
   onReturnButtonPositionChange,
   overlayButtonVisible,
   onOverlayButtonVisibleChange,
+  overlayButtonOpacity,
+  onOverlayButtonOpacityChange,
   volumeUp5TapEnabled,
   onVolumeUp5TapEnabledChange,
   autoLaunchEnabled,
@@ -381,22 +386,19 @@ const SecurityTab: React.FC<SecurityTabProps> = ({
         {returnMode === 'button' && (
           <>
             <View style={styles.divider} />
-            {displayMode === 'external_app' && (
-              <>
-                <SettingsRadioGroup
-                  hint="Button position on screen"
-                  options={[
-                    { value: 'top-left', label: 'Top Left', icon: 'arrow-top-left' },
-                    { value: 'top-right', label: 'Top Right', icon: 'arrow-top-right' },
-                    { value: 'bottom-left', label: 'Bottom Left', icon: 'arrow-bottom-left' },
-                    { value: 'bottom-right', label: 'Bottom Right', icon: 'arrow-bottom-right' },
-                  ]}
-                  value={returnButtonPosition}
-                  onValueChange={onReturnButtonPositionChange}
-                />
-                <View style={styles.divider} />
-              </>
-            )}
+            <SettingsRadioGroup
+              hint="Button position on screen"
+              options={[
+                { value: 'top-left', label: 'Top Left', icon: 'arrow-top-left' },
+                { value: 'top-right', label: 'Top Right', icon: 'arrow-top-right' },
+                { value: 'bottom-left', label: 'Bottom Left', icon: 'arrow-bottom-left' },
+                { value: 'bottom-right', label: 'Bottom Right', icon: 'arrow-bottom-right' },
+              ]}
+              value={returnButtonPosition}
+              onValueChange={onReturnButtonPositionChange}
+            />
+
+            <View style={styles.divider} />
             <SettingsSwitch
               label="👁️ Show Button"
               hint={displayMode === 'external_app' 
@@ -405,6 +407,22 @@ const SecurityTab: React.FC<SecurityTabProps> = ({
               value={overlayButtonVisible}
               onValueChange={onOverlayButtonVisibleChange}
             />
+
+            {overlayButtonVisible && (
+              <>
+                <View style={styles.divider} />
+                <SettingsSlider
+                  label="Button Opacity"
+                  hint="Adjust the transparency of the return button"
+                  value={overlayButtonOpacity}
+                  onValueChange={onOverlayButtonOpacityChange}
+                  minimumValue={0.05}
+                  maximumValue={1.0}
+                  step={0.05}
+                  formatValue={(v) => `${Math.round(v * 100)}%`}
+                />
+              </>
+            )}
           </>
         )}
         
@@ -422,7 +440,7 @@ const SecurityTab: React.FC<SecurityTabProps> = ({
         
         <SettingsInfoBox variant="info">
           <Text style={styles.infoText}>
-            ℹ️ {returnMode === 'button' && displayMode === 'external_app' 
+            ℹ️ {returnMode === 'button'
               ? `Tap the return button (${returnButtonPosition}) ${returnTapCount || '5'} times to access settings`
               : `Tap anywhere on screen ${returnTapCount || '5'} times within ${returnTapTimeout ? `${(parseInt(returnTapTimeout, 10) / 1000).toFixed(1)}s` : '1.5s'} to access settings`}
             {kioskEnabled && ' (PIN required)'}

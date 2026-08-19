@@ -11,6 +11,7 @@ const API_KEY_SERVICE = 'freekiosk_api_key';
 const MQTT_PASSWORD_SERVICE = 'freekiosk_mqtt_password';
 const WIFI_PASSWORD_SERVICE_PREFIX = 'freekiosk_wifi_password:';
 const BASIC_AUTH_PASSWORD_SERVICE = 'freekiosk_basic_auth_password';
+const BASIC_AUTH_PASSWORD_FALLBACK_KEY = '@kiosk_basic_auth_password_secure_fallback';
 const LEGACY_API_KEY = '@kiosk_rest_api_key'; // Legacy AsyncStorage key for migration
 const ATTEMPTS_KEY = '@kiosk_pin_attempts';
 const LOCKOUT_KEY = '@kiosk_pin_lockout';
@@ -837,10 +838,28 @@ export async function saveSecureBasicAuthPassword(password: string): Promise<boo
       await clearSecureBasicAuthPassword();
       return true;
     }
-    await Keychain.setGenericPassword('basic_auth_password', password, {
-      service: BASIC_AUTH_PASSWORD_SERVICE,
-      accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED,
-    });
+
+    // Primary store: Keychain
+    let keychainOk = false;
+    try {
+      await Keychain.setGenericPassword('basic_auth_password', password, {
+        service: BASIC_AUTH_PASSWORD_SERVICE,
+        accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED,
+      });
+      // Read-back check for broken keystores (issue #200)
+      const check = await Keychain.getGenericPassword({ service: BASIC_AUTH_PASSWORD_SERVICE });
+      keychainOk = !!check && check.password === password;
+    } catch (e) {
+      console.warn('[SecureStorage] Basic Auth Keychain write failed:', e);
+    }
+
+    if (keychainOk) {
+      await AsyncStorage.removeItem(BASIC_AUTH_PASSWORD_FALLBACK_KEY);
+    } else {
+      console.warn('[SecureStorage] Keychain failed for Basic Auth; using AsyncStorage fallback');
+      await AsyncStorage.setItem(BASIC_AUTH_PASSWORD_FALLBACK_KEY, password);
+    }
+
     return true;
   } catch (error) {
     console.error('[SecureStorage] Error saving basic auth password:', error);
@@ -850,8 +869,20 @@ export async function saveSecureBasicAuthPassword(password: string): Promise<boo
 
 export async function getSecureBasicAuthPassword(): Promise<string> {
   try {
-    const credentials = await Keychain.getGenericPassword({ service: BASIC_AUTH_PASSWORD_SERVICE });
-    return credentials ? credentials.password : '';
+    let credentials: Awaited<ReturnType<typeof Keychain.getGenericPassword>> = false;
+    try {
+      credentials = await Keychain.getGenericPassword({ service: BASIC_AUTH_PASSWORD_SERVICE });
+    } catch (e) {
+      console.warn('[SecureStorage] Basic Auth Keychain read failed:', e);
+    }
+
+    if (credentials) {
+      return credentials.password;
+    }
+
+    // Try fallback
+    const fallback = await AsyncStorage.getItem(BASIC_AUTH_PASSWORD_FALLBACK_KEY);
+    return fallback || '';
   } catch (error) {
     console.error('[SecureStorage] Error getting basic auth password:', error);
     return '';
@@ -861,6 +892,7 @@ export async function getSecureBasicAuthPassword(): Promise<string> {
 export async function clearSecureBasicAuthPassword(): Promise<void> {
   try {
     await Keychain.resetGenericPassword({ service: BASIC_AUTH_PASSWORD_SERVICE });
+    await AsyncStorage.removeItem(BASIC_AUTH_PASSWORD_FALLBACK_KEY);
   } catch (error) {
     console.error('[SecureStorage] Error clearing basic auth password:', error);
   }
