@@ -26,6 +26,8 @@ import android.net.wifi.WifiInfo
 import android.net.wifi.WifiManager
 import android.os.BatteryManager
 import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.os.PowerManager
 import androidx.core.content.ContextCompat
 import android.os.StatFs
@@ -77,9 +79,12 @@ class HttpServerModule(private val reactContext: ReactApplicationContext) :
     private var jsScreensaverActive: Boolean = false
     private var jsKioskMode: Boolean = false
     private var jsRotationEnabled: Boolean = false
-    private var jsRotationUrls: List<String> = emptyList()
+    private var jsRotationUrls: org.json.JSONArray = org.json.JSONArray()
     private var jsRotationInterval: Int = 30
     private var jsRotationCurrentIndex: Int = 0
+    private var jsLoadingError: Boolean = false
+    private var jsAutoReloadOnError: Boolean = false
+    private var reloadPending: Boolean = false
     
     // Auto-brightness status (updated via updateStatus method)
     private var jsAutoBrightnessEnabled: Boolean = false
@@ -461,6 +466,8 @@ class HttpServerModule(private val reactContext: ReactApplicationContext) :
             put("currentUrl", jsCurrentUrl)
             put("canGoBack", jsCanGoBack)
             put("loading", jsLoading)
+            put("loadingError", jsLoadingError)
+            put("autoReloadOnError", jsAutoReloadOnError)
         }
         status.put("webview", webviewStatus)
         
@@ -491,7 +498,7 @@ class HttpServerModule(private val reactContext: ReactApplicationContext) :
         // URL Rotation
         val rotationStatus = JSONObject().apply {
             put("enabled", jsRotationEnabled)
-            put("urls", org.json.JSONArray(jsRotationUrls))
+            put("urls", jsRotationUrls)
             put("interval", jsRotationInterval)
             put("currentIndex", jsRotationCurrentIndex)
         }
@@ -1037,14 +1044,37 @@ class HttpServerModule(private val reactContext: ReactApplicationContext) :
             if (status.has("rotationInterval")) jsRotationInterval = status.getInt("rotationInterval")
             if (status.has("rotationCurrentIndex")) jsRotationCurrentIndex = status.getInt("rotationCurrentIndex")
             if (status.has("rotationUrls")) {
-                val urlsArray = status.getJSONArray("rotationUrls")
-                jsRotationUrls = (0 until urlsArray.length()).map { urlsArray.getString(it) }
+                jsRotationUrls = status.getJSONArray("rotationUrls")
             }
             // Auto-brightness status
             if (status.has("autoBrightnessEnabled")) jsAutoBrightnessEnabled = status.getBoolean("autoBrightnessEnabled")
             if (status.has("autoBrightnessMin")) jsAutoBrightnessMin = status.getInt("autoBrightnessMin")
             if (status.has("autoBrightnessMax")) jsAutoBrightnessMax = status.getInt("autoBrightnessMax")
-            Log.d(TAG, "Status updated: url=$jsCurrentUrl, screensaver=$jsScreensaverActive, rotation=$jsRotationEnabled, autoBrightness=$jsAutoBrightnessEnabled")
+
+            // Loading error and auto-reload logic
+            if (status.has("loadingError")) {
+                val newLoadingError = status.getBoolean("loadingError")
+                if (newLoadingError && !jsLoadingError && jsAutoReloadOnError && !reloadPending) {
+                    Log.i(TAG, "WebView loading error detected, scheduling auto-reload in 5s...")
+                    reloadPending = true
+                    Handler(Looper.getMainLooper()).postDelayed({
+                        if (jsLoadingError && jsAutoReloadOnError) {
+                            Log.i(TAG, "Executing scheduled auto-reload")
+                            sendEvent("onApiCommand", Arguments.createMap().apply {
+                                putString("command", "reload")
+                                putString("params", "{}")
+                            })
+                        }
+                        reloadPending = false
+                    }, 5000)
+                }
+                jsLoadingError = newLoadingError
+            }
+            if (status.has("autoReloadOnError")) {
+                jsAutoReloadOnError = status.getBoolean("autoReloadOnError")
+            }
+
+            Log.d(TAG, "Status updated: url=$jsCurrentUrl, screensaver=$jsScreensaverActive, rotation=$jsRotationEnabled, autoBrightness=$jsAutoBrightnessEnabled, loadingError=$jsLoadingError, autoReload=$jsAutoReloadOnError")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to parse status update from JS", e)
         }
@@ -1457,7 +1487,7 @@ class HttpServerModule(private val reactContext: ReactApplicationContext) :
                 Log.w(TAG, "TTS not ready, reinitializing...")
                 initTts()
                 // Retry after a short delay
-                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                Handler(Looper.getMainLooper()).postDelayed({
                     if (ttsReady) {
                         speakText(text, language, voiceName)
                     }

@@ -204,7 +204,9 @@ class BootReceiver : BroadcastReceiver() {
      */
     private fun isKioskEnabled(context: Context): Boolean {
         return try {
-            val dbPath = context.getDatabasePath("RKStorage").absolutePath
+            val dbFile = context.getDatabasePath("RKStorage")
+            if (!dbFile.exists()) return false
+            val dbPath = dbFile.absolutePath
             val db = SQLiteDatabase.openDatabase(dbPath, null, SQLiteDatabase.OPEN_READONLY)
             val cursor = db.rawQuery(
                 "SELECT value FROM catalystLocalStorage WHERE key = ?",
@@ -224,7 +226,9 @@ class BootReceiver : BroadcastReceiver() {
      */
     private fun isScreenLockCompatSetting(context: Context): Boolean {
         return try {
-            val dbPath = context.getDatabasePath("RKStorage").absolutePath
+            val dbFile = context.getDatabasePath("RKStorage")
+            if (!dbFile.exists()) return false
+            val dbPath = dbFile.absolutePath
             val db = SQLiteDatabase.openDatabase(dbPath, null, SQLiteDatabase.OPEN_READONLY)
             val cursor = db.rawQuery(
                 "SELECT value FROM catalystLocalStorage WHERE key = ?",
@@ -445,7 +449,9 @@ class BootReceiver : BroadcastReceiver() {
      */
     private fun getManagedAppsFiltered(context: Context, predicate: (org.json.JSONObject) -> Boolean): List<String> {
         return try {
-            val dbPath = context.getDatabasePath("RKStorage").absolutePath
+            val dbFile = context.getDatabasePath("RKStorage")
+            if (!dbFile.exists()) return emptyList()
+            val dbPath = dbFile.absolutePath
             val db = SQLiteDatabase.openDatabase(dbPath, null, SQLiteDatabase.OPEN_READONLY)
             val cursor = db.rawQuery(
                 "SELECT value FROM catalystLocalStorage WHERE key = ?",
@@ -480,8 +486,10 @@ class BootReceiver : BroadcastReceiver() {
      */
     private fun isAutoLaunchEnabled(context: Context): Boolean {
         return try {
+            val dbFile = context.getDatabasePath("RKStorage")
+            if (!dbFile.exists()) return false
             // AsyncStorage uses SQLite database "RKStorage" with table "catalystLocalStorage"
-            val dbPath = context.getDatabasePath("RKStorage").absolutePath
+            val dbPath = dbFile.absolutePath
             val db = SQLiteDatabase.openDatabase(dbPath, null, SQLiteDatabase.OPEN_READONLY)
             
             val cursor = db.rawQuery(

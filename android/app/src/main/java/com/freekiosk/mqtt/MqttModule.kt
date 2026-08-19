@@ -90,9 +90,12 @@ class MqttModule(private val reactContext: ReactApplicationContext) :
     private var jsScreensaverActive: Boolean = false
     private var jsKioskMode: Boolean = false
     private var jsRotationEnabled: Boolean = false
-    private var jsRotationUrls: List<String> = emptyList()
+    private var jsRotationUrls: org.json.JSONArray = org.json.JSONArray()
     private var jsRotationInterval: Int = 30
     private var jsRotationCurrentIndex: Int = 0
+    private var jsLoadingError: Boolean = false
+    private var jsAutoReloadOnError: Boolean = false
+    private var reloadPending: Boolean = false
 
     // Auto-brightness status
     private var jsAutoBrightnessEnabled: Boolean = false
@@ -422,19 +425,41 @@ class MqttModule(private val reactContext: ReactApplicationContext) :
             if (status.has("rotationInterval")) jsRotationInterval = status.getInt("rotationInterval")
             if (status.has("rotationCurrentIndex")) jsRotationCurrentIndex = status.getInt("rotationCurrentIndex")
             if (status.has("rotationUrls")) {
-                val urlsArray = status.getJSONArray("rotationUrls")
-                jsRotationUrls = (0 until urlsArray.length()).map { urlsArray.getString(it) }
+                jsRotationUrls = status.getJSONArray("rotationUrls")
             }
             // Auto-brightness status
             if (status.has("autoBrightnessEnabled")) jsAutoBrightnessEnabled = status.getBoolean("autoBrightnessEnabled")
             if (status.has("autoBrightnessMin")) jsAutoBrightnessMin = status.getInt("autoBrightnessMin")
             if (status.has("autoBrightnessMax")) jsAutoBrightnessMax = status.getInt("autoBrightnessMax")
 
+            // Loading error and auto-reload logic
+            if (status.has("loadingError")) {
+                val newLoadingError = status.getBoolean("loadingError")
+                if (newLoadingError && !jsLoadingError && jsAutoReloadOnError && !reloadPending) {
+                    Log.i(TAG, "WebView loading error detected, scheduling auto-reload in 5s...")
+                    reloadPending = true
+                    Handler(Looper.getMainLooper()).postDelayed({
+                        if (jsLoadingError && jsAutoReloadOnError) {
+                            Log.i(TAG, "Executing scheduled auto-reload")
+                            sendEvent("onApiCommand", Arguments.createMap().apply {
+                                putString("command", "reload")
+                                putString("params", "{}")
+                            })
+                        }
+                        reloadPending = false
+                    }, 5000)
+                }
+                jsLoadingError = newLoadingError
+            }
+            if (status.has("autoReloadOnError")) {
+                jsAutoReloadOnError = status.getBoolean("autoReloadOnError")
+            }
+
             // Motion detection
             if (status.has("motionDetected")) jsMotionDetected = status.getBoolean("motionDetected")
             if (status.has("motionAlwaysOn")) jsMotionAlwaysOn = status.getBoolean("motionAlwaysOn")
 
-            Log.d(TAG, "Status updated: url=$jsCurrentUrl, screensaver=$jsScreensaverActive, rotation=$jsRotationEnabled, motion=$jsMotionDetected")
+            Log.d(TAG, "Status updated: url=$jsCurrentUrl, screensaver=$jsScreensaverActive, rotation=$jsRotationEnabled, motion=$jsMotionDetected, loadingError=$jsLoadingError, autoReload=$jsAutoReloadOnError")
 
             // Trigger immediate MQTT status publish
             mqttClient?.let { client ->
@@ -517,6 +542,8 @@ class MqttModule(private val reactContext: ReactApplicationContext) :
             put("currentUrl", jsCurrentUrl)
             put("canGoBack", jsCanGoBack)
             put("loading", jsLoading)
+            put("loadingError", jsLoadingError)
+            put("autoReloadOnError", jsAutoReloadOnError)
             put("motionDetected", jsMotionDetected)
         }
         status.put("webview", webviewStatus)
@@ -547,7 +574,7 @@ class MqttModule(private val reactContext: ReactApplicationContext) :
         // Rotation
         val rotationStatus = JSONObject().apply {
             put("enabled", jsRotationEnabled)
-            put("urls", org.json.JSONArray(jsRotationUrls))
+            put("urls", jsRotationUrls)
             put("interval", jsRotationInterval)
             put("currentIndex", jsRotationCurrentIndex)
         }

@@ -1024,7 +1024,11 @@ class MainActivity : ReactActivity() {
    */
   private fun getAsyncStorageValue(key: String, defaultValue: String): String {
     return try {
-      val dbPath = getDatabasePath("RKStorage").absolutePath
+      val dbFile = getDatabasePath("RKStorage")
+      if (!dbFile.exists()) {
+        return defaultValue
+      }
+      val dbPath = dbFile.absolutePath
       val db = android.database.sqlite.SQLiteDatabase.openDatabase(dbPath, null, android.database.sqlite.SQLiteDatabase.OPEN_READONLY)
       
       val cursor = db.rawQuery(
@@ -1254,7 +1258,7 @@ class MainActivity : ReactActivity() {
       "mqtt_enabled", "mqtt_broker_url", "mqtt_port", "mqtt_username", "mqtt_password",
       "mqtt_client_id", "mqtt_base_topic", "mqtt_discovery_prefix", "mqtt_status_interval",
       "mqtt_allow_control", "mqtt_device_name",
-      "external_app_mode", "managed_apps"
+      "external_app_mode", "managed_apps", "webview_auto_reload_on_error"
     )
     if (adbConfigKeys.none { intent.hasExtra(it) }) return false
     
@@ -1442,6 +1446,15 @@ class MainActivity : ReactActivity() {
     }
     intent.getStringExtra("mqtt_device_name")?.let {
       editor.putString("@kiosk_mqtt_device_name", it)
+    }
+
+    intent.getStringExtra("webview_auto_reload_on_error")?.let {
+      editor.putString("@kiosk_webview_auto_reload_on_error", it)
+    }
+    if (intent.hasExtra("webview_auto_reload_on_error") && !intent.hasExtra("webview_auto_reload_on_error" /* as string */)) {
+      // Handle boolean extra if provided as --ez
+      val autoReload = intent.getBooleanExtra("webview_auto_reload_on_error", false)
+      editor.putString("@kiosk_webview_auto_reload_on_error", autoReload.toString())
     }
 
     // Multi-app mode configuration
@@ -1673,6 +1686,7 @@ class MainActivity : ReactActivity() {
       "mqtt_status_interval" to "@kiosk_mqtt_status_interval",
       "mqtt_allow_control" to "@kiosk_mqtt_allow_control",
       "mqtt_device_name" to "@kiosk_mqtt_device_name",
+      "webview_auto_reload_on_error" to "@kiosk_webview_auto_reload_on_error",
       // Multi-app
       "external_app_mode" to "@kiosk_external_app_mode"
     )
