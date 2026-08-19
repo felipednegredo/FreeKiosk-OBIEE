@@ -11,6 +11,7 @@ const KEYS = {
   URL: '@kiosk_url',
   PIN: '@kiosk_pin',
   AUTO_RELOAD: '@kiosk_auto_reload',
+  AUTO_RELOAD_DELAY: '@kiosk_auto_reload_delay',
   KIOSK_ENABLED: '@kiosk_enabled',
   AUTO_LAUNCH: '@kiosk_auto_launch',
   SCREEN_LOCK_COMPAT: '@kiosk_screen_lock_compat',
@@ -235,6 +236,26 @@ export const StorageService = {
     } catch (error) {
       console.error('Error getting auto reload:', error);
       return false;
+    }
+  },
+
+  // Auto Reload Delay (in seconds, 1-60)
+  saveAutoReloadDelay: async (delay: number): Promise<void> => {
+    try {
+      await AsyncStorage.setItem(KEYS.AUTO_RELOAD_DELAY, String(delay));
+    } catch (error) {
+      console.error('Error saving auto reload delay:', error);
+    }
+  },
+
+  getAutoReloadDelay: async (): Promise<number> => {
+    try {
+      const value = await AsyncStorage.getItem(KEYS.AUTO_RELOAD_DELAY);
+      const delay = value ? parseInt(value, 10) : 10;
+      return isNaN(delay) ? 10 : Math.max(1, Math.min(60, delay));
+    } catch (error) {
+      console.error('Error getting auto reload delay:', error);
+      return 10;
     }
   },
 

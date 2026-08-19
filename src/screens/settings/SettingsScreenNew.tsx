@@ -84,6 +84,7 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
   const [pinMaxAttempts, setPinMaxAttempts] = useState<number>(5);
   const [pinMaxAttemptsText, setPinMaxAttemptsText] = useState<string>('5');
   const [autoReload, setAutoReload] = useState<boolean>(false);
+  const [autoReloadDelay, setAutoReloadDelay] = useState<string>('10');
   const [kioskEnabled, setKioskEnabled] = useState<boolean>(false);
   const [autoLaunchEnabled, setAutoLaunchEnabled] = useState<boolean>(false);
   const [screenLockCompatEnabled, setScreenLockCompatEnabled] = useState<boolean>(false);
@@ -432,6 +433,7 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
   const loadSettings = async (): Promise<void> => {
     const savedUrl = await StorageService.getUrl();
     const savedAutoReload = await StorageService.getAutoReload();
+    const savedAutoReloadDelay = await StorageService.getAutoReloadDelay();
     const savedKioskEnabled = await StorageService.getKioskEnabled();
     const savedAutoLaunch = await StorageService.getAutoLaunch();
     const savedScreenLockCompat = await StorageService.getScreenLockCompat();
@@ -454,6 +456,7 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
     if (hasPinConfigured) setPin('');
 
     setAutoReload(savedAutoReload);
+    setAutoReloadDelay(String(savedAutoReloadDelay));
     setKioskEnabled(savedKioskEnabled);
     setAutoLaunchEnabled(savedAutoLaunch ?? false);
     setScreenLockCompatEnabled(savedScreenLockCompat ?? false);
@@ -1404,6 +1407,8 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
     await StorageService.saveScreensaverVideoLoop(screensaverVideoLoop);
 
     if (displayMode === 'webview' || displayMode === 'media_player') {
+      const reloadDelayNum = parseInt(autoReloadDelay, 10);
+      await StorageService.saveAutoReloadDelay(isNaN(reloadDelayNum) ? 10 : reloadDelayNum);
       await StorageService.saveAutoReload(displayMode === 'webview' ? autoReload : false);
       await StorageService.saveKioskEnabled(kioskEnabled);
       await StorageService.saveDefaultBrightness(defaultBrightness);
@@ -1870,6 +1875,8 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
             }}
             autoReload={autoReload}
             onAutoReloadChange={setAutoReload}
+            autoReloadDelay={autoReloadDelay}
+            onAutoReloadDelayChange={setAutoReloadDelay}
             pdfViewerEnabled={pdfViewerEnabled}
             onPdfViewerEnabledChange={setPdfViewerEnabled}
             printEnabled={printEnabled}

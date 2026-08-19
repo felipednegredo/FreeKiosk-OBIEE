@@ -46,6 +46,7 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
   const isFocused = useIsFocused();
   const [url, setUrl] = useState<string>('');
   const [autoReload, setAutoReload] = useState<boolean>(false);
+  const [autoReloadDelay, setAutoReloadDelay] = useState<number>(10);
   // #177 — Pause WebView audio/video when the page is hidden (screensaver / screen off / background)
   const [pauseWebMediaWhenHidden, setPauseWebMediaWhenHidden] = useState<boolean>(true);
   const [screensaverEnabled, setScreensaverEnabled] = useState(false);
@@ -1472,6 +1473,7 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
       const savedUrl = str(K.URL);
       console.log('[KioskScreen] savedUrl:', savedUrl);
       const savedAutoReload = bool(K.AUTO_RELOAD, true);
+      const savedAutoReloadDelay = num(K.AUTO_RELOAD_DELAY, 10);
       const savedPauseWebMediaWhenHidden = bool(K.PAUSE_WEB_MEDIA_WHEN_HIDDEN, true);
       const savedKioskEnabled = bool(K.KIOSK_ENABLED, false);
       const savedScreensaverEnabled = bool(K.SCREENSAVER_ENABLED, false);
@@ -1499,6 +1501,7 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
 
       if (savedUrl) setUrl(savedUrl);
       setAutoReload(savedAutoReload);
+      setAutoReloadDelay(savedAutoReloadDelay);
       setPauseWebMediaWhenHidden(savedPauseWebMediaWhenHidden);
       // #205 — re-apply the opt-in 2-way audio (intercom) mode on each kiosk launch: the
       // native AudioRecordingCallback registration doesn't survive an app restart. No-op when off.
@@ -2597,6 +2600,7 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
               key={webViewKey}
               url={url}
               autoReload={autoReload}
+              autoReloadDelay={autoReloadDelay}
               keyboardMode={keyboardMode}
               onUserInteraction={onUserInteraction}
               jsToExecute={jsToExecute}

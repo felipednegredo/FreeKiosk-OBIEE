@@ -75,7 +75,9 @@ interface GeneralTabProps {
   // Auto reload (webview only)
   autoReload: boolean;
   onAutoReloadChange: (value: boolean) => void;
-  
+  autoReloadDelay: string;
+  onAutoReloadDelayChange: (value: string) => void;
+
   // PDF Viewer (webview only)
   pdfViewerEnabled: boolean;
   onPdfViewerEnabledChange: (value: boolean) => void;
@@ -193,6 +195,8 @@ const GeneralTab: React.FC<GeneralTabProps> = ({
   onDashboardModeEnabledChange,
   autoReload,
   onAutoReloadChange,
+  autoReloadDelay,
+  onAutoReloadDelayChange,
   pdfViewerEnabled,
   onPdfViewerEnabledChange,
   printEnabled,
@@ -603,7 +607,7 @@ const GeneralTab: React.FC<GeneralTabProps> = ({
             label="Oracle Analytics / OBI Auto Login"
             value={oracleAutoLoginEnabled}
             onValueChange={onOracleAutoLoginEnabledChange}
-            hint="Automatically log in to Oracle Business Intelligence (OBI) and Data Visualization (DV) pages."
+            hint="Ativar opção de login automático no Oracle Business Intelligence (OBI) & Data Visualization (DV)"
           />
 
           <SettingsInfoBox variant="info">
@@ -936,6 +940,19 @@ const GeneralTab: React.FC<GeneralTabProps> = ({
             value={autoReload}
             onValueChange={onAutoReloadChange}
           />
+          {autoReload && (
+            <>
+              <View style={styles.rotationSpacer} />
+              <SettingsInput
+                label="Reload Delay (seconds)"
+                value={autoReloadDelay}
+                onChangeText={onAutoReloadDelayChange}
+                placeholder="10"
+                keyboardType="numeric"
+                hint="Time in seconds before automatic reload after an error (1-60)"
+              />
+            </>
+          )}
         </SettingsSection>
       )}
       

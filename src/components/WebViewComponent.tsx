@@ -29,6 +29,7 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 interface WebViewComponentProps {
   url: string;
   autoReload: boolean;
+  autoReloadDelay?: number;
   keyboardMode?: string; // 'default', 'force_numeric', 'smart'
   onUserInteraction?: (event?: { isTap?: boolean; x?: number; y?: number; fromFallbackButton?: boolean }) => void; // callback optionnel pour interaction utilisateur
   jsToExecute?: string; // JavaScript code to execute from API
@@ -69,6 +70,7 @@ const MEDIA_PAUSE_JS = `(function(){try{document.querySelectorAll('audio,video')
 const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(({ 
   url, 
   autoReload,
+  autoReloadDelay = 10,
   keyboardMode = 'default',
   onUserInteraction,
   jsToExecute,
@@ -99,6 +101,8 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
   const containerViewRef = useRef<View>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<boolean>(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [reloadCountdown, setReloadCountdown] = useState<number>(0);
   const [pageLoaded, setPageLoaded] = useState<boolean>(false);
 
   // Oracle Analytics Auto Login State
@@ -196,7 +200,7 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
     blockedUrlTimerRef.current = setTimeout(() => setBlockedUrlMessage(null), 2000);
   }, [urlFilterShowFeedback]);
 
-  // Expose goBack, scrollToTop, and clearCache methods to parent via ref
+  // Clear cache via ref
   useImperativeHandle(ref, () => ({
     goBack: () => {
       if (webViewRef.current) {
@@ -252,6 +256,29 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
       } catch {}
     }
   }));
+
+  const handleReload = useCallback((): void => {
+    setError(false);
+    setLoading(true);
+    setPageLoaded(false);
+    setReloadCountdown(0);
+    setErrorMessage(null);
+  }, []);
+
+  // Countdown timer effect for auto-reload
+  React.useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (error && autoReload && reloadCountdown > 0) {
+      timer = setTimeout(() => {
+        setReloadCountdown(prev => prev - 1);
+      }, 1000);
+    } else if (error && autoReload && reloadCountdown === 0) {
+      handleReload();
+    }
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [error, autoReload, reloadCountdown, handleReload]);
 
   React.useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -782,6 +809,8 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
 
   const handleError = (event: WebViewErrorEvent): void => {
     console.error('[FreeKiosk] WebView error:', event.nativeEvent);
+    const msg = event.nativeEvent.description || `Error ${event.nativeEvent.errorCode}`;
+    setErrorMessage(msg);
     setError(true);
     setLoading(false);
     
@@ -790,11 +819,7 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
     webViewRef.current?.injectJavaScript('window.location.href = "about:blank"; true;');
     
     if (autoReload) {
-      setTimeout(() => {
-        setError(false);
-        setLoading(true);
-        setPageLoaded(false);
-      }, 5000);
+      setReloadCountdown(autoReloadDelay);
     }
   };
 
@@ -813,17 +838,15 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
     // Show the error overlay (with the fallback settings button) for ANY main-page
     // HTTP error code, regardless of autoReload — otherwise the user is stranded
     // with no way back to settings when the page can't load (#180).
+    const msg = `HTTP Error ${statusCode}`;
+    setErrorMessage(msg);
     setError(true);
     setLoading(false);
     webViewRef.current?.injectJavaScript('window.location.href = "about:blank"; true;');
 
     // Auto-retry only when the feature is enabled.
     if (autoReload) {
-      setTimeout(() => {
-        setError(false);
-        setLoading(true);
-        setPageLoaded(false);
-      }, 5000);
+      setReloadCountdown(autoReloadDelay);
     }
   };
 
@@ -844,12 +867,6 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
     if (onRenderProcessGone) {
       onRenderProcessGone(didCrash);
     }
-  };
-
-  const handleReload = (): void => {
-    setError(false);
-    setLoading(true);
-    setPageLoaded(false);
   };
 
   const handleNavigateToSettings = (): void => {
@@ -1273,24 +1290,53 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
       )}
 
       {error && (
-        <View style={styles.errorContainer}>
-          <Text style={styles.errorIcon}>⚠️</Text>
-          <Text style={styles.errorText}>Loading Error</Text>
-          <Text style={styles.errorSubtext}>URL: {url}</Text>
-          {autoReload && (
-            <Text style={styles.helpText}>
-              Automatic reload in 5 seconds...
-            </Text>
-          )}
-          <TouchableOpacity style={styles.reloadButton} onPress={handleReload}>
-            <Text style={styles.reloadText}>🔄 Reload Now</Text>
-          </TouchableOpacity>
-          {/* Fallback settings button inside error overlay */}
-          <Text style={styles.fallbackSettingsHint}>
-            Tap ⚙️ button 5× to return to settings
-          </Text>
+        <View style={styles.errorOverlay}>
+          <Animated.View style={[styles.errorCard, { opacity: fadeAnim }]}>
+            <View style={styles.errorHeader}>
+              <Text style={styles.errorIcon}>⚠️</Text>
+              <Text style={styles.errorTitle}>Erro de Carregamento</Text>
+            </View>
+
+            <View style={styles.errorDetails}>
+              <Text style={styles.errorMessage}>{errorMessage}</Text>
+              <Text style={styles.errorUrl} numberOfLines={1} ellipsizeMode="middle">
+                {url}
+              </Text>
+            </View>
+
+            {autoReload && (
+              <View style={styles.countdownBox}>
+                <Text style={styles.countdownLabel}>Recarregando em</Text>
+                <Text style={styles.countdownNumber}>{reloadCountdown}s</Text>
+                <View style={styles.progressContainer}>
+                  <View style={[styles.progressIndicator, { width: `${(reloadCountdown / autoReloadDelay) * 100}%` }]} />
+                </View>
+              </View>
+            )}
+
+            <View style={styles.errorActions}>
+              <TouchableOpacity style={styles.actionButton} onPress={handleReload}>
+                <Text style={styles.actionButtonText}>🔄 Recarregar Agora</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.actionButton, styles.settingsButton]}
+                onPress={handleNavigateToSettings}
+              >
+                <Text style={styles.actionButtonText}>⚙️ Configurações</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.errorFooter}>
+              <Text style={styles.footerText}>
+                Dica: Toque 5x no botão ⚙️ para acessar as configurações
+              </Text>
+            </View>
+          </Animated.View>
+
+          {/* Invisible fallback button for 5-tap gesture detection */}
           <TouchableOpacity
-            style={styles.fallbackSettingsButton}
+            style={styles.hiddenSettingsTrigger}
             activeOpacity={0.7}
             onPress={() => {
               if (onUserInteraction) {
@@ -1298,7 +1344,7 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
               }
             }}
           >
-            <Text style={styles.fallbackSettingsButtonText}>⚙️</Text>
+            <Text style={styles.hiddenSettingsTriggerText}>⚙️</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -1469,52 +1515,134 @@ const styles = StyleSheet.create({
     fontSize: 16, 
     color: '#666' 
   },
-  errorContainer: {
+  errorOverlay: {
     position: 'absolute',
     top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
     justifyContent: 'center',
     alignItems: 'center',
+    padding: 24,
+    zIndex: 1000,
+  },
+  errorCard: {
     backgroundColor: '#fff',
-    padding: 20,
+    borderRadius: 16,
+    width: '100%',
+    maxWidth: 450,
+    padding: 24,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  errorHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  errorTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#333',
+    marginLeft: 12,
   },
   errorIcon: {
-    fontSize: 48,
-    marginBottom: 16,
+    fontSize: 32,
   },
-  errorText: { 
-    fontSize: 18, 
-    color: '#333', 
-    marginBottom: 10, 
-    textAlign: 'center', 
-    fontWeight: 'bold' 
+  errorDetails: {
+    width: '100%',
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#eee',
   },
-  errorSubtext: { 
-    fontSize: 14, 
-    color: '#666', 
-    marginBottom: 10, 
-    textAlign: 'center' 
+  errorMessage: {
+    fontSize: 16,
+    color: '#e53935',
+    fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: 8,
   },
-  helpText: { 
-    fontSize: 14, 
-    color: '#666', 
-    marginBottom: 20, 
-    textAlign: 'center' 
+  errorUrl: {
+    fontSize: 13,
+    color: '#666',
+    textAlign: 'center',
+    fontStyle: 'italic',
   },
-  reloadButton: { 
-    backgroundColor: '#0066cc', 
-    paddingHorizontal: 30, 
-    paddingVertical: 15, 
-    borderRadius: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 4,
+  countdownBox: {
+    alignItems: 'center',
+    marginBottom: 24,
+    width: '100%',
   },
-  reloadText: { 
-    color: '#fff', 
-    fontSize: 16, 
-    fontWeight: 'bold' 
+  countdownLabel: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 4,
+  },
+  countdownNumber: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#0066cc',
+    marginBottom: 8,
+  },
+  progressContainer: {
+    width: '100%',
+    height: 4,
+    backgroundColor: '#eee',
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  progressIndicator: {
+    height: '100%',
+    backgroundColor: '#0066cc',
+  },
+  errorActions: {
+    width: '100%',
+    gap: 12,
+  },
+  actionButton: {
+    backgroundColor: '#0066cc',
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  settingsButton: {
+    backgroundColor: '#f0f0f0',
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  actionButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  errorFooter: {
+    marginTop: 20,
+  },
+  footerText: {
+    fontSize: 12,
+    color: '#999',
+    textAlign: 'center',
+  },
+  hiddenSettingsTrigger: {
+    position: 'absolute',
+    bottom: 40,
+    right: 40,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  hiddenSettingsTriggerText: {
+    fontSize: 24,
+    opacity: 0.1,
   },
   blockedToast: {
     position: 'absolute',
