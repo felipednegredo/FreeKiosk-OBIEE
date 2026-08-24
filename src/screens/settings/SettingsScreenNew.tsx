@@ -29,6 +29,7 @@ import UpdateModule, { ENABLE_SELF_UPDATE } from '../../utils/UpdateModule';
 import AutoBrightnessModule from '../../utils/AutoBrightnessModule';
 import { httpServer } from '../../utils/HttpServerModule';
 import { hasSettingsAccess, revokeSettingsAccess } from '../../utils/authState';
+import { logCrash } from '../../utils/CrashLog';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
 
@@ -1263,14 +1264,21 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
 
   // ============ SAVE FUNCTION ============
 
+  /**
+   * Save entry point. If anything escapes (a native module rejecting, a storage
+   * write failing)
+   * the save would end silently with the config half-written — and on a release
+   * build an unhandled error can take the whole app down. Catch it, record it in
+   * the crash log and tell the user which step failed.
+   */
   const handleSave = async (): Promise<void> => {
     try {
       console.log('[Settings] Starting save process...');
 
-      // Validation
+       // Validation
       if (displayMode === 'webview' && !url && !dashboardModeEnabled) {
-        Alert.alert('Error', 'Please enter a URL');
-        return;
+       Alert.alert('Error', 'Please enter a URL');
+       return;
       }
 
       if (displayMode === 'media_player') {
@@ -1284,7 +1292,12 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
       let finalUrl = (url || '').trim();
       if (displayMode === 'webview' && !dashboardModeEnabled) {
         const urlLower = finalUrl.toLowerCase();
-        if (urlLower.startsWith('file://') || urlLower.startsWith('javascript:') || urlLower.startsWith('data:')) {
+        if (
+          urlLower.startsWith('file://') ||
+          urlLower.startsWith('javascript:') ||
+          urlLower.startsWith('vbscript:') ||
+          urlLower.startsWith('data:')
+        ) {
           Alert.alert('Security Error', 'This type of URL is not allowed. Use http:// or https://');
           return;
         }
@@ -1431,9 +1444,11 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
 
     } catch (error: any) {
       console.error('[Settings] FINAL CRITICAL SAVE ERROR:', error);
+      const message = error?.message || String(error);
+      logCrash('SETTINGS SAVE FAILED', `${message}\n${error?.stack ?? '(no stack)'}`);
       Alert.alert(
         '☢️ Critical Save Error',
-        `The app encountered an error and couldn't save settings:\n\n${error?.message || String(error)}\n\nPlease take a screenshot and check your configuration.`,
+        `The app encountered an error and couldn't save settings:\n\n${message}\n\nPlease take a screenshot and check your configuration.`,
         [{ text: 'OK' }]
       );
     }

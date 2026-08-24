@@ -10,6 +10,7 @@ import {
   SettingsButton,
   SettingsInfoBox,
   BackupRestoreSection,
+  CrashLogSection,
 } from '../../../components/settings';
 import { ApiSettingsSection } from '../../../components/ApiSettingsSection';
 import { MqttSettingsSection } from '../../../components/MqttSettingsSection';
@@ -301,6 +302,9 @@ const AdvancedTab: React.FC<AdvancedTabProps> = ({
 
       {/* Backup & Restore */}
       <BackupRestoreSection onRestoreComplete={onRestoreComplete} />
+
+      {/* Crash Log (native + JS) */}
+      <CrashLogSection />
 
       {/* Android System Settings */}
       <SettingsSection title="Android System Settings" icon="android">

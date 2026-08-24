@@ -946,6 +946,42 @@ class KioskModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
         }
     }
 
+    // ==================== Crash log ====================
+
+    /**
+     * Record a JS fatal error in the same log as native crashes.
+     * The JS global error handler calls this before the app goes down.
+     */
+    @ReactMethod
+    fun logCrash(title: String, details: String, promise: Promise) {
+        try {
+            CrashLog.append(reactApplicationContext, title, details)
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.resolve(false)
+        }
+    }
+
+    /** Full crash log, so Settings can show it on the device itself. */
+    @ReactMethod
+    fun readCrashLog(promise: Promise) {
+        try {
+            promise.resolve(CrashLog.read(reactApplicationContext))
+        } catch (e: Exception) {
+            promise.reject("ERROR", "Failed to read crash log: ${e.message}")
+        }
+    }
+
+    @ReactMethod
+    fun clearCrashLog(promise: Promise) {
+        try {
+            CrashLog.clear(reactApplicationContext)
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("ERROR", "Failed to clear crash log: ${e.message}")
+        }
+    }
+
     /**
      * Save PIN hash for ADB verification
      * Called when PIN is set via React Native UI to keep ADB config in sync
