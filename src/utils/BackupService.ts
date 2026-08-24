@@ -449,30 +449,52 @@ export async function importBackupFromContent(jsonContent: string, fileName?: st
       warning = 'Note: PIN code was not imported for security reasons. Please configure a new PIN.';
     }
 
-    // Import settings
+    // Import settings in batches for efficiency
+    const settingsPairs: [string, string][] = [];
     const keys = Object.keys(data.settings);
+
     for (const key of keys) {
       try {
-        const value = data.settings[key];
-        if (value !== null && value !== undefined) {
-          // Handle API key separately - save to secure storage (Keychain)
-          if (key === '@kiosk_rest_api_key') {
-            await saveSecureApiKey(String(value));
-            console.log('[BackupService] API key imported to secure storage');
-          } else if (key === '@kiosk_mqtt_password') {
-            await saveSecureMqttPassword(String(value));
-            console.log('[BackupService] MQTT password imported to secure storage');
-          } else if (key === '@kiosk_basic_auth_password') {
-            await saveSecureBasicAuthPassword(String(value));
-            console.log('[BackupService] Basic Auth password imported to secure storage');
-          } else {
-            // Ensure value is a string before saving to AsyncStorage to prevent native crashes
-            const stringValue = typeof value === 'string' ? value : JSON.stringify(value);
-            await AsyncStorage.setItem(key, stringValue);
-          }
+        let value = data.settings[key];
+
+        // Skip null or undefined values to avoid corrupting the database
+        if (value === null || value === undefined || value === 'null' || value === 'undefined') {
+          continue;
         }
+
+        // Handle secure storage keys separately (not in AsyncStorage batch)
+        if (key === '@kiosk_rest_api_key') {
+          await saveSecureApiKey(String(value));
+          continue;
+        }
+
+        if (key === '@kiosk_mqtt_password') {
+          await saveSecureMqttPassword(String(value));
+          continue;
+        }
+
+        if (key === '@kiosk_basic_auth_password') {
+          await saveSecureBasicAuthPassword(String(value));
+          continue;
+        }
+
+        // Add to batch
+        const stringValue = typeof value === 'string' ? value : JSON.stringify(value);
+        settingsPairs.push([key, stringValue]);
+
       } catch (e) {
-        console.warn(`Failed to import key ${key}:`, e);
+        console.warn(`[BackupService] Failed to process key ${key}:`, e);
+      }
+    }
+
+    // Execute batch save
+    if (settingsPairs.length > 0) {
+      try {
+        await AsyncStorage.multiSet(settingsPairs);
+        console.log(`[BackupService] Successfully imported ${settingsPairs.length} settings in batch`);
+      } catch (e) {
+        console.error('[BackupService] Batch import failed:', e);
+        return { success: false, error: 'Failed to save imported settings to database' };
       }
     }
 

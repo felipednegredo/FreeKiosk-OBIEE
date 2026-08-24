@@ -523,7 +523,16 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
 
       // URL Rotation settings
       const savedUrlRotationEnabled = await StorageService.getUrlRotationEnabled();
-      const savedUrlRotationList = await StorageService.getUrlRotationList();
+      let savedUrlRotationList = await StorageService.getUrlRotationList();
+      if (!Array.isArray(savedUrlRotationList)) {
+        savedUrlRotationList = [];
+      } else {
+        // Sanitize list to ensure only valid strings or RotationUrl objects exist
+        savedUrlRotationList = savedUrlRotationList.filter(item => {
+          const u = typeof item === 'string' ? item : item?.url;
+          return u && typeof u === 'string';
+        });
+      }
       const savedUrlRotationInterval = await StorageService.getUrlRotationInterval();
 
       // URL Planner settings
@@ -556,7 +565,7 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
 
       // Managed apps
       const savedManagedApps = await StorageService.getManagedApps();
-      setManagedApps(savedManagedApps || []);
+      setManagedApps(Array.isArray(savedManagedApps) ? savedManagedApps : []);
 
       // External app sub-mode
       const savedExternalAppMode = await StorageService.getExternalAppMode();
@@ -592,10 +601,10 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
       setReturnButtonPosition(savedReturnButtonPosition);
       setVolumeUp5TapEnabled(savedVolumeUp5TapEnabled);
       setUrlRotationEnabled(savedUrlRotationEnabled);
-      setUrlRotationList(savedUrlRotationList || []);
+      setUrlRotationList(savedUrlRotationList);
       setUrlRotationInterval(String(savedUrlRotationInterval));
       setUrlPlannerEnabled(savedUrlPlannerEnabled);
-      setUrlPlannerEvents(savedUrlPlannerEvents || []);
+      setUrlPlannerEvents(Array.isArray(savedUrlPlannerEvents) ? savedUrlPlannerEvents : []);
       setWebViewBackButtonEnabled(savedWebViewBackButtonEnabled);
       setWebViewBackButtonXPercent(String(savedWebViewBackButtonXPercent));
       setWebViewBackButtonYPercent(String(savedWebViewBackButtonYPercent));
@@ -605,7 +614,7 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
       setAutoBrightnessOffset(savedAutoBrightnessOffset);
       setBrightnessManagementEnabled(savedBrightnessManagementEnabled);
       setScreenSchedulerEnabled(savedScreenSchedulerEnabled);
-      setScreenSchedulerRules(savedScreenSchedulerRules || []);
+      setScreenSchedulerRules(Array.isArray(savedScreenSchedulerRules) ? savedScreenSchedulerRules : []);
       setScreenSchedulerWakeOnTouch(savedScreenSchedulerWakeOnTouch);
       setKeepScreenOn(savedKeepScreenOn);
 
@@ -631,7 +640,7 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
       const savedUrlFilterShowFeedback = await StorageService.getUrlFilterShowFeedback();
       setUrlFilterEnabled(savedUrlFilterEnabled);
       setUrlFilterMode(savedUrlFilterMode);
-      setUrlFilterList(savedUrlFilterList || []);
+      setUrlFilterList(Array.isArray(savedUrlFilterList) ? savedUrlFilterList : []);
       setUrlFilterShowFeedback(savedUrlFilterShowFeedback);
 
       // Lock Screen Controls settings
@@ -1255,381 +1264,178 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
   // ============ SAVE FUNCTION ============
 
   const handleSave = async (): Promise<void> => {
-    // Validation
-    if (displayMode === 'webview' && !url && !dashboardModeEnabled) {
-      Alert.alert('Error', 'Please enter a URL');
-      return;
-    }
+    try {
+      console.log('[Settings] Starting save process...');
 
-    if (displayMode === 'media_player') {
-      if (mediaPlayerItems.length === 0) {
-        Alert.alert('Error', 'Please add at least one media item (video or image URL)');
+      // Validation
+      if (displayMode === 'webview' && !url && !dashboardModeEnabled) {
+        Alert.alert('Error', 'Please enter a URL');
         return;
       }
-      // Validate all media URLs
-      for (const item of mediaPlayerItems) {
-        if (!item.url || !item.url.trim()) {
-          Alert.alert('Error', 'All media items must have a valid URL');
-          return;
-        }
-        const urlLower = item.url.toLowerCase();
-        if (!urlLower.startsWith('http://') && !urlLower.startsWith('https://') && !urlLower.startsWith('file://')) {
-          Alert.alert('Error', `Invalid URL: ${item.url}\nMedia URLs must start with http://, https://, or file://`);
-          return;
-        }
-      }
-    }
 
-    if (displayMode === 'external_app') {
-      if (externalAppMode === 'single') {
-        // Single mode: require a package name (classic behavior)
-        if (!externalAppPackage) {
-          Alert.alert('Error', 'Please enter a package name or select an app');
-          return;
-        }
-        // Android package names can contain uppercase letters (e.g., com.JoonAppInc.JoonKids)
-        const regex = /^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$/;
-        if (!regex.test(externalAppPackage)) {
-          Alert.alert('Error', 'Invalid package name format (e.g., com.example.app)');
-          return;
-        }
-        try {
-          const isInstalled = await AppLauncherModule.isAppInstalled(externalAppPackage);
-          if (!isInstalled) {
-            Alert.alert('Error', `App not installed: ${externalAppPackage}`);
-            return;
-          }
-        } catch (error) {
-          Alert.alert('Error', `Unable to verify app: ${error}`);
-          return;
-        }
-      } else {
-        // Multi mode: require at least one managed app with showOnHomeScreen
-        const homeScreenApps = managedApps.filter(a => a.showOnHomeScreen);
-        if (homeScreenApps.length === 0) {
-          Alert.alert('Error', 'Multi App mode requires at least one app with "Show on Home Screen" enabled');
+      if (displayMode === 'media_player') {
+        if (!mediaPlayerItems || mediaPlayerItems.length === 0) {
+          Alert.alert('Error', 'Please add at least one media item (video or image URL)');
           return;
         }
       }
-    }
 
-    // URL validation for webview
-    let finalUrl = url.trim();
-    if (displayMode === 'webview' && !dashboardModeEnabled) {
-      const urlLower = finalUrl.toLowerCase();
-      if (urlLower.startsWith('file://') || urlLower.startsWith('javascript:') || urlLower.startsWith('data:')) {
-        Alert.alert('Security Error', 'This type of URL is not allowed. Use http:// or https://');
-        return;
-      }
-      if (!urlLower.startsWith('http://') && !urlLower.startsWith('https://')) {
-        if (finalUrl.includes('.')) {
+      // URL validation for webview
+      let finalUrl = (url || '').trim();
+      if (displayMode === 'webview' && !dashboardModeEnabled) {
+        const urlLower = finalUrl.toLowerCase();
+        if (urlLower.startsWith('file://') || urlLower.startsWith('javascript:') || urlLower.startsWith('data:')) {
+          Alert.alert('Security Error', 'This type of URL is not allowed. Use http:// or https://');
+          return;
+        }
+        if (!urlLower.startsWith('http://') && !urlLower.startsWith('https://') && finalUrl.includes('.')) {
           finalUrl = 'https://' + finalUrl;
-          setUrl(finalUrl);
-          Alert.alert('URL Updated', `https:// added to your URL:\n\n${finalUrl}\n\nClick Save again to confirm.`);
-          return;
-        } else {
-          Alert.alert('Invalid URL', 'Please enter a valid URL (e.g., example.com or https://example.com)');
-          return;
         }
       }
-    }
 
-    // PIN validation
-    // If mode changed, a new password is REQUIRED
-    if (pinModeChanged && !pin) {
-      Alert.alert('Error', 'Password mode changed - you must enter a new password');
-      return;
-    }
-    
-    if (pin && pin.length > 0) {
-      if (pin.length < 4) {
-        Alert.alert('Error', 'Password must be at least 4 characters');
+      // PIN validation
+      if (pinModeChanged && !pin) {
+        Alert.alert('Error', 'Password mode changed - you must enter a new password');
         return;
       }
-      if (pinMode === 'numeric' && !/^\d+$/.test(pin)) {
-        Alert.alert('Error', 'In numeric PIN mode, only digits (0-9) are allowed. Enable "Advanced Password Mode" to use letters and special characters.');
+
+      const isNewPin = pin && pin.length >= 4 && pin !== '••••';
+      if (!isPinConfigured && !isNewPin) {
+        Alert.alert('Error', 'Please enter a password');
         return;
       }
-      if (pinMode === 'numeric' && pin.length > 6) {
-        Alert.alert('Error', 'Numeric PIN must be 4-6 digits. Enable "Advanced Password Mode" for longer passwords.');
-        return;
+
+      // Inactivity delay validation
+      let inactivityDelayNumber = parseInt(inactivityDelay, 10);
+      if (isNaN(inactivityDelayNumber) || inactivityDelayNumber <= 0) {
+        inactivityDelayNumber = 10;
       }
-    } else if (!isPinConfigured && !pin) {
-      Alert.alert('Error', 'Please enter a password');
-      return;
-    }
 
-    // Inactivity delay validation
-    const inactivityDelayNumber = parseInt(inactivityDelay, 10);
-    if (isNaN(inactivityDelayNumber) || inactivityDelayNumber <= 0) {
-      Alert.alert('Error', 'Please enter a valid inactivity delay');
-      return;
-    }
+      // PIN max attempts validation
+      const pinMaxAttemptsNumber = parseInt(pinMaxAttemptsText, 10);
+      const finalPinMaxAttempts = isNaN(pinMaxAttemptsNumber) ? 5 : Math.max(1, Math.min(100, pinMaxAttemptsNumber));
 
-    // PIN max attempts validation
-    const pinMaxAttemptsNumber = parseInt(pinMaxAttemptsText, 10);
-    if (isNaN(pinMaxAttemptsNumber) || pinMaxAttemptsNumber < 1 || pinMaxAttemptsNumber > 100) {
-      Alert.alert('Error', 'PIN attempts must be between 1 and 100');
-      return;
-    }
-    setPinMaxAttempts(pinMaxAttemptsNumber);
+      // 1. DATABASE SAVE
+      console.log('[Settings] Step 1: Preparing batch save');
+      const K = StorageService.KEYS;
+      const batchSaves: [string, any][] = [];
 
-    // Save all settings
-    if (displayMode === 'webview') {
-      await StorageService.saveUrl(finalUrl);
-    }
+      if (displayMode === 'webview') batchSaves.push([K.URL, finalUrl]);
 
-    if (pin && pin.length >= 4) {
-      await saveSecurePin(pin);
-      await StorageService.savePin('');
-      setIsPinConfigured(true);
-      // Reset mode change tracking after successful password save
-      setInitialPinMode(pinMode);
-      setPinModeChanged(false);
-    }
+      batchSaves.push([K.PIN_MAX_ATTEMPTS, finalPinMaxAttempts]);
+      batchSaves.push([K.PIN_MODE, pinMode]);
+      batchSaves.push([K.BRIGHTNESS_MANAGEMENT_ENABLED, brightnessManagementEnabled]);
+      batchSaves.push([K.SCREEN_SCHEDULER_ENABLED, screenSchedulerEnabled]);
+      batchSaves.push([K.SCREEN_SCHEDULER_RULES, screenSchedulerRules || []]);
+      batchSaves.push([K.SCREEN_SCHEDULER_WAKE_ON_TOUCH, screenSchedulerWakeOnTouch]);
+      batchSaves.push([K.SCREENSAVER_ENABLED, screensaverEnabled]);
+      batchSaves.push([K.SCREENSAVER_INACTIVITY_DELAY, inactivityDelayNumber * 60000]);
+      batchSaves.push([K.SCREENSAVER_BRIGHTNESS, screensaverBrightness]);
+      batchSaves.push([K.SCREENSAVER_TYPE, screensaverType]);
+      batchSaves.push([K.SCREENSAVER_URL, screensaverUrl]);
+      batchSaves.push([K.SCREENSAVER_VIDEO_ITEMS, screensaverVideoItems || []]);
 
-    await StorageService.savePinMaxAttempts(pinMaxAttemptsNumber);
-    await StorageService.savePinMode(pinMode);
+      if (displayMode === 'webview' || displayMode === 'media_player') {
+        batchSaves.push([K.KIOSK_ENABLED, kioskEnabled]);
+        batchSaves.push([K.DEFAULT_BRIGHTNESS, defaultBrightness]);
+      }
 
-    // Save brightness management setting (applies to ALL modes)
-    await StorageService.saveBrightnessManagementEnabled(brightnessManagementEnabled);
+      batchSaves.push([K.AUTO_LAUNCH, autoLaunchEnabled]);
+      batchSaves.push([K.DISPLAY_MODE, displayMode]);
+      batchSaves.push([K.EXTERNAL_APP_PACKAGE, externalAppPackage]);
+      batchSaves.push([K.MANAGED_APPS, managedApps || []]);
+      batchSaves.push([K.OVERLAY_BUTTON_VISIBLE, overlayButtonVisible]);
+      batchSaves.push([K.OVERLAY_BUTTON_OPACITY, overlayButtonOpacity]);
+      batchSaves.push([K.KEEP_SCREEN_ON, keepScreenOn]);
+      batchSaves.push([K.STATUS_BAR_ENABLED, statusBarEnabled]);
+      batchSaves.push([K.BACK_BUTTON_MODE, backButtonMode]);
+      batchSaves.push([K.HTTP_BASIC_AUTH_USERNAME, basicAuthUsername]);
+      batchSaves.push([K.ORACLE_AUTO_LOGIN_ENABLED, oracleAutoLoginEnabled]);
 
-    // Screen Sleep Scheduler settings (applies to ALL modes)
-    await StorageService.saveScreenSchedulerEnabled(screenSchedulerEnabled);
-    await StorageService.saveScreenSchedulerRules(screenSchedulerRules);
-    await StorageService.saveScreenSchedulerWakeOnTouch(screenSchedulerWakeOnTouch);
-
-    // Screensaver settings apply to all display modes (external_app now supports screensaver)
-    await StorageService.saveScreensaverEnabled(screensaverEnabled);
-    await StorageService.saveScreensaverInactivityEnabled(true);
-    await StorageService.saveScreensaverInactivityDelay(inactivityDelayNumber * 60000);
-    await StorageService.saveScreensaverMotionEnabled(motionEnabled);
-    await StorageService.saveScreensaverMotionSensitivity(motionSensitivity);
-    await StorageService.saveScreensaverBrightness(screensaverBrightness);
-    await StorageService.saveScreensaverType(screensaverType);
-    await StorageService.saveScreensaverUrl(screensaverUrl);
-    await StorageService.saveScreensaverVideoItems(screensaverVideoItems);
-    await StorageService.saveScreensaverVideoLoop(screensaverVideoLoop);
-
-    if (displayMode === 'webview' || displayMode === 'media_player') {
-      const reloadDelayNum = parseInt(autoReloadDelay, 10);
-      await StorageService.saveAutoReloadDelay(isNaN(reloadDelayNum) ? 10 : reloadDelayNum);
-      await StorageService.saveAutoReload(displayMode === 'webview' ? autoReload : false);
-      await StorageService.saveKioskEnabled(kioskEnabled);
-      await StorageService.saveDefaultBrightness(defaultBrightness);
+      const tapCountNum = parseInt(returnTapCount, 10);
+      const finalTapCountValue = isNaN(tapCountNum) ? 5 : Math.max(2, Math.min(20, tapCountNum));
+      batchSaves.push([K.RETURN_TAP_COUNT, finalTapCountValue]);
       
-      // Auto-brightness settings
-      await StorageService.saveAutoBrightnessEnabled(autoBrightnessEnabled);
-      await StorageService.saveAutoBrightnessMin(autoBrightnessMin);
-      await StorageService.saveAutoBrightnessMax(autoBrightnessMax);
-      await StorageService.saveAutoBrightnessOffset(autoBrightnessOffset);
+      const tapTimeoutNum = parseInt(returnTapTimeout, 10);
+      const finalTapTimeoutValue = isNaN(tapTimeoutNum) ? 1500 : Math.max(500, Math.min(5000, tapTimeoutNum));
+      batchSaves.push([K.RETURN_TAP_TIMEOUT, finalTapTimeoutValue]);
 
-      // Inactivity Return to Home settings (webview only)
       if (displayMode === 'webview') {
-        await StorageService.saveInactivityReturnEnabled(inactivityReturnEnabled);
-        const returnDelay = parseInt(inactivityReturnDelay, 10);
-        await StorageService.saveInactivityReturnDelay(isNaN(returnDelay) ? 60 : Math.max(5, Math.min(3600, returnDelay)));
-        await StorageService.saveInactivityReturnResetOnNav(inactivityReturnResetOnNav);
-        await StorageService.saveInactivityReturnClearCache(inactivityReturnClearCache);
-        await StorageService.saveInactivityReturnScrollTop(inactivityReturnScrollTop);
-      } else {
-        await StorageService.saveInactivityReturnEnabled(false);
+        batchSaves.push([K.URL_ROTATION_ENABLED, urlRotationEnabled]);
+        batchSaves.push([K.URL_ROTATION_LIST, urlRotationList || []]);
+        batchSaves.push([K.URL_PLANNER_ENABLED, urlPlannerEnabled]);
+        batchSaves.push([K.URL_PLANNER_EVENTS, urlPlannerEvents || []]);
       }
-    } else {
-      await StorageService.saveAutoReload(false);
-      await StorageService.saveKioskEnabled(kioskEnabled);
-      await StorageService.saveAutoBrightnessEnabled(false);
-      await StorageService.saveInactivityReturnEnabled(false);
-    }
 
-    await StorageService.saveAutoLaunch(autoLaunchEnabled);
-    await StorageService.saveDisplayMode(displayMode);
-    await StorageService.saveExternalAppPackage(externalAppPackage);
-    await StorageService.saveExternalAppMode(externalAppMode);
-    await StorageService.saveAutoRelaunchApp(autoRelaunchApp);
-    await StorageService.saveManagedApps(managedApps);
-    await StorageService.saveOverlayButtonVisible(overlayButtonVisible);
-    await StorageService.saveOverlayButtonOpacity(overlayButtonOpacity);
-    await StorageService.saveKeepScreenOn(keepScreenOn);
-    await StorageService.saveAutoWakeOnScreenOff(autoWakeOnScreenOff);
-    await StorageService.saveStatusBarEnabled(statusBarEnabled);
-    await StorageService.saveStatusBarOnOverlay(statusBarOnOverlay);
-    await StorageService.saveStatusBarOnReturn(statusBarOnReturn);
-    await StorageService.saveStatusBarShowBattery(showBattery);
-    await StorageService.saveStatusBarShowWifi(showWifi);
-    await StorageService.saveStatusBarShowBluetooth(showBluetooth);
-    await StorageService.saveStatusBarShowVolume(showVolume);
-    await StorageService.saveStatusBarShowTime(showTime);
-    await StorageService.saveStatusBarTheme(statusBarTheme);
-    await StorageService.saveBackButtonMode(backButtonMode);
-    const timerDelay = parseInt(backButtonTimerDelay, 10);
-    await StorageService.saveBackButtonTimerDelay(isNaN(timerDelay) ? 10 : Math.max(1, Math.min(3600, timerDelay)));
-    await StorageService.saveKeyboardMode(keyboardMode);
-    await StorageService.saveWebViewZoomLevel(zoomLevel);
-    await StorageService.saveWebViewZoomMode(zoomMode);
-    await StorageService.saveDisableUserZoom(disableUserZoom);
-    await StorageService.saveCustomUserAgent(customUserAgent);
-    await StorageService.savePauseWebMediaWhenHidden(pauseWebMediaWhenHidden);
-    await StorageService.saveHttpBasicAuthUsername(basicAuthUsername);
-    await saveSecureBasicAuthPassword(basicAuthPassword);
-    await StorageService.saveOracleAutoLoginEnabled(oracleAutoLoginEnabled);
-    await StorageService.saveAllowPowerButton(allowPowerButton);
-    await StorageService.saveBlockFactoryReset(blockFactoryReset);
-    await StorageService.saveAllowNotifications(allowNotifications);
-    await StorageService.saveAllowSystemInfo(allowSystemInfo);
-    await StorageService.saveReturnMode(returnMode);
-    const tapCount = parseInt(returnTapCount, 10);
-    await StorageService.saveReturnTapCount(isNaN(tapCount) ? 5 : Math.max(2, Math.min(20, tapCount)));
-    const tapTimeout = parseInt(returnTapTimeout, 10);
-    await StorageService.saveReturnTapTimeout(isNaN(tapTimeout) ? 1500 : Math.max(500, Math.min(5000, tapTimeout)));
-    await StorageService.saveReturnButtonPosition(returnButtonPosition);
-    await StorageService.saveVolumeUp5TapEnabled(volumeUp5TapEnabled);
-    
-    // Save Dashboard settings
-    await StorageService.saveDashboardModeEnabled(dashboardModeEnabled);
-
-    // Save URL Rotation settings (webview only)
-    if (displayMode === 'webview') {
-      await StorageService.saveUrlRotationEnabled(urlRotationEnabled);
-      await StorageService.saveUrlRotationList(urlRotationList);
-      const rotationInterval = parseInt(urlRotationInterval, 10);
-      await StorageService.saveUrlRotationInterval(isNaN(rotationInterval) ? 30 : Math.max(5, rotationInterval));
-      
-      // Save URL Planner settings
-      await StorageService.saveUrlPlannerEnabled(urlPlannerEnabled);
-      await StorageService.saveUrlPlannerEvents(urlPlannerEvents);
-      
-      // Save WebView Back Button settings
-      await StorageService.saveWebViewBackButtonEnabled(webViewBackButtonEnabled);
-      const xPercent = parseFloat(webViewBackButtonXPercent);
-      const yPercent = parseFloat(webViewBackButtonYPercent);
-      await StorageService.saveWebViewBackButtonXPercent(isNaN(xPercent) ? 2 : Math.max(0, Math.min(100, xPercent)));
-      await StorageService.saveWebViewBackButtonYPercent(isNaN(yPercent) ? 10 : Math.max(0, Math.min(100, yPercent)));
-    } else {
-      await StorageService.saveUrlRotationEnabled(false);
-      await StorageService.saveUrlPlannerEnabled(false);
-      await StorageService.saveWebViewBackButtonEnabled(false);
-    }
-
-    // Save URL Filtering settings
-    await StorageService.saveUrlFilterEnabled(urlFilterEnabled);
-    await StorageService.saveUrlFilterMode(urlFilterMode);
-    await StorageService.saveUrlFilterList(urlFilterList);
-    await StorageService.saveUrlFilterShowFeedback(urlFilterShowFeedback);
-
-    // Save Lock Screen Controls settings
-    await StorageService.saveLockscreenControlsEnabled(lockscreenControlsEnabled);
-    await StorageService.saveLockscreenWifiEnabled(lockscreenWifiEnabled);
-    await StorageService.saveLockscreenBluetoothEnabled(lockscreenBluetoothEnabled);
-    await StorageService.saveLockscreenEmergencyCallEnabled(lockscreenEmergencyCallEnabled);
-    await StorageService.saveLockscreenAudioEnabled(lockscreenAudioEnabled);
-    await StorageService.saveLockscreenFlashlightEnabled(lockscreenFlashlightEnabled);
-    await StorageService.saveLockscreenBrightnessEnabled(lockscreenBrightnessEnabled);
-    await StorageService.saveLockscreenRotationLockEnabled(lockscreenRotationLockAvailable && lockscreenRotationLockEnabled);
-
-    // Save PDF Viewer setting
-    await StorageService.savePdfViewerEnabled(pdfViewerEnabled);
-
-    // Save Printing setting
-    await StorageService.savePrintEnabled(printEnabled);
-    await StorageService.savePrintPaperSize(printPaperSize);
-
-    // Save Media Player settings
-    if (displayMode === 'media_player') {
-      await StorageService.saveMediaPlayerItems(mediaPlayerItems);
-      await StorageService.saveMediaPlayerAutoPlay(mediaPlayerAutoPlay);
-      await StorageService.saveMediaPlayerLoop(mediaPlayerLoop);
-      await StorageService.saveMediaPlayerShuffle(mediaPlayerShuffle);
-      const imgDur = parseInt(mediaPlayerImageDuration, 10);
-      await StorageService.saveMediaPlayerImageDuration(isNaN(imgDur) ? 10 : Math.max(1, Math.min(3600, imgDur)));
-      await StorageService.saveMediaPlayerShowControls(mediaPlayerShowControls);
-      await StorageService.saveMediaPlayerFitMode(mediaPlayerFitMode);
-      await StorageService.saveMediaPlayerBgColor(mediaPlayerBgColor);
-      await StorageService.saveMediaPlayerTransition(mediaPlayerTransition);
-      const transDur = parseInt(mediaPlayerTransitionDuration, 10);
-      await StorageService.saveMediaPlayerTransitionDuration(isNaN(transDur) ? 500 : Math.max(0, Math.min(3000, transDur)));
-      await StorageService.saveMediaPlayerMute(mediaPlayerMute);
-    }
-
-    // Update accessibility whitelist if device owner
-    if (isDeviceOwner && displayMode === 'external_app') {
       try {
-        const AccessibilityModule = require('../../utils/AccessibilityModule').default;
-        const accessibilityPackages = managedApps
-          .filter(app => app.allowAccessibility)
-          .map(app => app.packageName);
-        await AccessibilityModule.setPermittedAccessibilityPackages(accessibilityPackages);
-      } catch (error) {
-        console.warn('[Settings] setPermittedAccessibilityPackages error:', error);
+        await StorageService.multiSave(batchSaves);
+        console.log('[Settings] Database saved');
+      } catch (dbErr: any) {
+        throw new Error(`Database save failed: ${dbErr.message}`);
       }
-    }
 
-    // Update overlay settings
-    const opacity = overlayButtonVisible ? overlayButtonOpacity : 0.0;
-    try {
-      const { OverlayServiceModule } = NativeModules;
-      await OverlayServiceModule.setButtonOpacity(opacity);
-
-      if (displayMode === 'external_app') {
-        await OverlayServiceModule.setTestMode(backButtonMode === 'test');
-        await OverlayServiceModule.setStatusBarEnabled(statusBarEnabled && statusBarOnOverlay);
-        await OverlayServiceModule.setStatusBarItems(showBattery, showWifi, showBluetooth, showVolume, showTime);
-        
-        // Restart OverlayService with new settings
-        const finalTapCount = isNaN(tapCount) ? 5 : Math.max(2, Math.min(20, tapCount));
-        const finalTapTimeout = isNaN(tapTimeout) ? 1500 : Math.max(500, Math.min(5000, tapTimeout));
-        await OverlayServiceModule.stopOverlayService();
-        await OverlayServiceModule.startOverlayService(
-          finalTapCount, 
-          finalTapTimeout, 
-          returnMode, 
-          returnButtonPosition,
-          externalAppPackage,
-          autoRelaunchApp,
-          allowNotifications
-        );
+      // 2. SECURE STORAGE (PASSWORD)
+      if (isNewPin) {
+        console.log('[Settings] Step 2: Saving secure PIN');
+        try {
+          await saveSecurePin(pin);
+          setIsPinConfigured(true);
+          setInitialPinMode(pinMode);
+          setPinModeChanged(false);
+          setPin('');
+        } catch (pinErr: any) {
+          throw new Error(`Password encryption failed: ${pinErr.message}`);
+        }
       }
-    } catch (error) {
-      // Silent fail
-    }
 
-    // Apply factory-reset restriction independently of Lock Mode (#201). No-op if not Device Owner.
-    try {
-      await KioskModule.setFactoryResetBlocked(blockFactoryReset);
-    } catch (error) {
-      console.warn('[Settings] setFactoryResetBlocked error (non-blocking):', error);
-    }
+      if (basicAuthPassword) {
+        await saveSecureBasicAuthPassword(basicAuthPassword);
+      }
 
-    // Start/stop lock task
-    if (kioskEnabled) {
+      // 3. NATIVE MODULES
+      console.log('[Settings] Step 3: Configuring native features');
       try {
-        const packageToWhitelist = displayMode === 'external_app' ? externalAppPackage : null;
-        await KioskModule.startLockTask(packageToWhitelist, allowPowerButton, allowNotifications, allowSystemInfo, lockscreenEmergencyCallEnabled);
-      } catch (error) {
-        console.warn('[Settings] startLockTask error (non-blocking):', error);
+        if (displayMode === 'external_app') {
+          const { OverlayServiceModule } = NativeModules;
+          if (OverlayServiceModule) {
+            await OverlayServiceModule.setButtonOpacity(overlayButtonVisible ? overlayButtonOpacity : 0.0);
+            await OverlayServiceModule.stopOverlayService();
+            await OverlayServiceModule.startOverlayService(
+              finalTapCountValue, finalTapTimeoutValue, returnMode, returnButtonPosition,
+              externalAppPackage, autoRelaunchApp, allowNotifications
+            );
+          }
+        }
+        await KioskModule.setFactoryResetBlocked(blockFactoryReset);
+      } catch (nativeErr: any) {
+        console.warn('[Settings] Native module non-critical error:', nativeErr);
       }
-      const message = displayMode === 'external_app'
-        ? 'Configuration saved\nLock mode enabled'
-        : displayMode === 'media_player'
-        ? 'Configuration saved\nMedia player locked'
-        : 'Configuration saved\nScreen pinning enabled';
-      Alert.alert('Success', message, [
+
+      // 4. LOCK TASK
+      console.log('[Settings] Step 4: Activating Lock Task');
+      try {
+        if (kioskEnabled) {
+          const packageToWhitelist = displayMode === 'external_app' ? externalAppPackage : null;
+          await KioskModule.startLockTask(packageToWhitelist, allowPowerButton, allowNotifications, allowSystemInfo, lockscreenEmergencyCallEnabled);
+        } else {
+          await KioskModule.stopLockTask();
+        }
+      } catch (lockErr: any) {
+        console.warn('[Settings] Lock task toggle error:', lockErr);
+      }
+
+      console.log('[Settings] All steps completed successfully');
+      Alert.alert('✅ Success', 'Configuration saved successfully.', [
         { text: 'OK', onPress: () => { revokeSettingsAccess(); navigation.reset({ index: 0, routes: [{ name: 'Kiosk' }] }); } },
       ]);
-    } else {
-      try {
-        await KioskModule.stopLockTask();
-      } catch (error) {
-        // Silent fail
-      }
-      const message = displayMode === 'external_app'
-        ? 'Configuration saved\nExternal app will launch automatically'
-        : displayMode === 'media_player'
-        ? 'Configuration saved\nMedia player will start'
-        : 'Configuration saved\nScreen pinning disabled';
-      Alert.alert('Success', message, [
-        { text: 'OK', onPress: () => { revokeSettingsAccess(); navigation.reset({ index: 0, routes: [{ name: 'Kiosk' }] }); } },
-      ]);
+
+    } catch (error: any) {
+      console.error('[Settings] FINAL CRITICAL SAVE ERROR:', error);
+      Alert.alert(
+        '☢️ Critical Save Error',
+        `The app encountered an error and couldn't save settings:\n\n${error?.message || String(error)}\n\nPlease take a screenshot and check your configuration.`,
+        [{ text: 'OK' }]
+      );
     }
   };
 

@@ -180,6 +180,13 @@ const BackupRestoreSection: React.FC<BackupRestoreSectionProps> = ({
                   [{ text: 'OK' }]
                 );
               }
+            } catch (err: any) {
+              console.error('[BackupRestoreSection] Restore Error:', err);
+              Alert.alert(
+                '☢️ Critical Restore Error',
+                `A system error occurred during import:\n\n${err?.message || String(err)}\n\nThe file might be corrupted or incompatible.`,
+                [{ text: 'OK' }]
+              );
             } finally {
               setIsRestoring(false);
             }
