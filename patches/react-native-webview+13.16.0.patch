@@ -97,7 +97,7 @@ index 07f73fd..275f2cd 100644
  
      private PermissionAwareActivity getPermissionAwareActivity() {
 diff --git a/node_modules/react-native-webview/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClient.java b/node_modules/react-native-webview/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClient.java
-index 0287e1c..88d1fa8 100644
+index 0287e1c..e731c7e 100644
 --- a/node_modules/react-native-webview/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClient.java
 +++ b/node_modules/react-native-webview/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClient.java
 @@ -1,9 +1,11 @@
@@ -295,7 +295,7 @@ index 0287e1c..88d1fa8 100644
      @Override
      public boolean shouldOverrideUrlLoading(WebView view, String url) {
          final RNCWebView rncWebView = (RNCWebView) view;
-@@ -155,25 +300,38 @@ public class RNCWebViewClient extends WebViewClient {
+@@ -155,25 +300,53 @@ public class RNCWebViewClient extends WebViewClient {
          super.onReceivedHttpAuthRequest(view, handler, host, realm);
      }
  
@@ -326,6 +326,21 @@ index 0287e1c..88d1fa8 100644
 -        // WebView.getUrl() will return the top-level window URL.
 -        // If a top-level navigation triggers this error handler, the top-level URL will be the failing URL (not the URL of the currently-rendered page).
 -        // This is desired behavior. We later use these values to determine whether the request is a top-level navigation or a subresource request.
++        // Aurora OBI - ignorar apenas erro de data do certificado
++        try {
++            android.net.Uri uri = android.net.Uri.parse(error.getUrl());
++
++            if ("obi.auroracoop.com.br".equalsIgnoreCase(uri.getHost())
++                    && error.getPrimaryError() == SslError.SSL_DATE_INVALID) {
++
++                Log.w(TAG, "[FreeKiosk] Ignoring SSL date error for Aurora OBI");
++                handler.proceed();
++                return;
++            }
++        } catch (Exception e) {
++            Log.e(TAG, "[FreeKiosk] Error checking Aurora OBI SSL exception", e);
++        }
++
 +        // onReceivedSslError is called for most requests, per Android docs
          String topWindowUrl = webView.getUrl();
          String failingUrl = error.getUrl();
@@ -344,7 +359,7 @@ index 0287e1c..88d1fa8 100644
          switch (code) {
              case SslError.SSL_DATE_INVALID:
                  description = "The date of the certificate is invalid";
-@@ -200,26 +358,230 @@ public class RNCWebViewClient extends WebViewClient {
+@@ -200,24 +373,228 @@ public class RNCWebViewClient extends WebViewClient {
  
          description = descriptionPrefix + description;
  
@@ -444,9 +459,9 @@ index 0287e1c..88d1fa8 100644
 +            code,
 +            description,
 +            failingUrl
-         );
-     }
- 
++        );
++    }
++
 +    // ✅ IMPROVED: Helper methods to manage certificate acceptance with SHA-256 and expiration
 +
 +    /**
@@ -577,17 +592,15 @@ index 0287e1c..88d1fa8 100644
 +        SharedPreferences prefs = context.getSharedPreferences(
 +            "freekiosk_ssl_certs",
 +            Context.MODE_PRIVATE
-+        );
+         );
 +        prefs.edit().clear().apply();
 +        if (BuildConfig.DEBUG) {
 +            Log.i(TAG, "All accepted certificates cleared");
 +        }
-+    }
-+
+     }
+ 
      public void onReceivedSubResourceSslError(
-       WebView webView,
-       int errorCode,
-@@ -314,8 +676,6 @@ public class RNCWebViewClient extends WebViewClient {
+@@ -314,8 +691,6 @@ public class RNCWebViewClient extends WebViewClient {
      protected WritableMap createWebViewEvent(WebView webView, String url) {
          WritableMap event = Arguments.createMap();
          event.putDouble("target", RNCWebViewWrapper.getReactTagFromWebView(webView));
