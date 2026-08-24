@@ -1452,24 +1452,35 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
       const K = StorageService.KEYS;
 
       // Helper to parse values from the batch map
-      const str = (key: string): string | null => settings.get(key) ?? null;
+      const str = (key: string): string | null => {
+        const v = settings.get(key);
+        return (v === null || v === 'null' || v === 'undefined') ? null : v;
+      };
+
       const bool = (key: string, def: boolean): boolean => {
         const v = settings.get(key);
-        if (v == null) return def;
-        try { return JSON.parse(v); } catch { return def; }
+        if (v == null || v === 'null' || v === 'undefined' || v === '') return def;
+        try {
+          const parsed = JSON.parse(v);
+          return typeof parsed === 'boolean' ? parsed : (parsed === 'true' || parsed === 1);
+        } catch {
+          return v === 'true';
+        }
       };
+
       const num = (key: string, def: number): number => {
         const v = settings.get(key);
-        if (v == null) return def;
+        if (v == null || v === 'null' || v === 'undefined' || v === '') return def;
         const n = parseFloat(v);
         return isNaN(n) ? def : n;
       };
+
       const jsonParse = (key: string, def: any): any => {
         const v = settings.get(key);
-        if (v == null || v === 'null') return def;
+        if (v == null || v === 'null' || v === 'undefined' || v === '') return def;
         try {
           const parsed = JSON.parse(v);
-          return parsed ?? def;
+          return (parsed !== null && parsed !== undefined) ? parsed : def;
         } catch {
           return def;
         }
@@ -1599,8 +1610,21 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
       
       // Load URL Rotation settings
       const savedUrlRotationEnabled = bool(K.URL_ROTATION_ENABLED, false);
-      const savedUrlRotationList = jsonParse(K.URL_ROTATION_LIST, []) as (string | RotationUrl)[];
-      const savedUrlRotationInterval = num(K.URL_ROTATION_INTERVAL, 30);
+      let savedUrlRotationList = jsonParse(K.URL_ROTATION_LIST, []) as (string | RotationUrl)[];
+
+      // Ensure rotation list is valid and filtered
+      if (Array.isArray(savedUrlRotationList)) {
+        savedUrlRotationList = savedUrlRotationList.filter(item => {
+          const urlStr = typeof item === 'string' ? item : item?.url;
+          return urlStr && typeof urlStr === 'string' && urlStr.length > 0;
+        });
+      } else {
+        savedUrlRotationList = [];
+      }
+
+      const rawRotationInterval = num(K.URL_ROTATION_INTERVAL, 30);
+      const savedUrlRotationInterval = Math.max(5, rawRotationInterval); // Force minimum 5s
+
       setUrlRotationEnabled(savedUrlRotationEnabled);
       setUrlRotationList(savedUrlRotationList);
       setUrlRotationInterval(savedUrlRotationInterval * 1000); // Convert seconds to ms

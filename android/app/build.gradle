@@ -161,7 +161,7 @@ android {
             signingConfig signingConfigs.release
             minifyEnabled enableProguardInReleaseBuilds
             shrinkResources true
-            proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
         }
     }
 
@@ -177,26 +177,55 @@ android {
     }
 }
 
-// Fix autolinking bug where react-native-screens incorrectly registers RNSSafeAreaViewComponentDescriptor
+// Fix autolinking bugs in React Native New Architecture
 task fixAutolinkingBug {
     doLast {
-        def autolinkingFile = file("build/generated/autolinking/src/main/jni/autolinking.cpp")
-        if (autolinkingFile.exists()) {
-            def content = autolinkingFile.text
+        // 1. Fix RNSSafeAreaViewComponentDescriptor typo in autolinking.cpp
+        def autolinkingCpp = file("build/generated/autolinking/src/main/jni/autolinking.cpp")
+        if (autolinkingCpp.exists()) {
+            def content = autolinkingCpp.text
             def fixed = content.replace('RNSSafeAreaViewComponentDescriptor', 'RNCSafeAreaViewComponentDescriptor')
             if (content != fixed) {
-                autolinkingFile.text = fixed
+                autolinkingCpp.text = fixed
                 println "[FreeKiosk] Fixed autolinking bug: RNSSafeAreaViewComponentDescriptor -> RNCSafeAreaViewComponentDescriptor"
+            }
+        }
+
+        // 2. Patch Android-autolinking.cmake to make add_subdirectory calls conditional.
+        // This prevents 'clean' from failing when codegen directories are missing.
+        def autolinkingCmake = file("build/generated/autolinking/src/main/jni/Android-autolinking.cmake")
+        if (autolinkingCmake.exists()) {
+            def content = autolinkingCmake.text
+            // Wrap add_subdirectory calls with if(EXISTS ...)
+            def fixed = content.replaceAll(/add_subdirectory\("([^"]+)"\s+([^)]+)\)/) { match, path, target ->
+                "if(EXISTS \"$path/CMakeLists.txt\")\n  add_subdirectory(\"$path\" $target)\nendif()"
+            }
+            if (content != fixed) {
+                autolinkingCmake.text = fixed
+                println "[FreeKiosk] Patched Android-autolinking.cmake to handle missing codegen directories"
             }
         }
     }
 }
 
-// Run fix before any CMake build task
-tasks.whenTaskAdded { task ->
-    if (task.name.startsWith('buildCMake')) {
+// Ensure autolinking fixes run before CMake configuration or build
+tasks.configureEach { task ->
+    if (task.name.contains('generateCodegenArtifacts') || task.name.startsWith('generateJsonModel') || task.name.startsWith('externalNativeBuild')) {
+        task.finalizedBy fixAutolinkingBug
+    }
+    if (task.name.startsWith('configureCMake') || task.name.startsWith('buildCMake')) {
         task.dependsOn fixAutolinkingBug
     }
+    
+    // Disable native clean tasks which are fragile and redundant (standard clean deletes the build dir)
+    if (task.name.startsWith('externalNativeBuildClean')) {
+        task.enabled = false
+    }
+}
+
+// Enhance clean to also remove .cxx directory
+clean.doFirst {
+    delete "${projectDir}/.cxx"
 }
 
 // React Native Vector Icons configuration

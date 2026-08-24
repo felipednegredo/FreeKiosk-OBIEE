@@ -2808,6 +2808,23 @@ export const StorageService = {
     }
   },
 
+  /**
+   * Batch save multiple settings in a single multiSet call.
+   * This is much more efficient than sequential setItem calls.
+   * @param pairs Array of [key, value] pairs. Values will be stringified if they are not strings.
+   */
+  multiSave: async (pairs: [string, any][]): Promise<void> => {
+    try {
+      const stringPairs: [string, string][] = pairs.map(([key, value]) => {
+        const stringValue = typeof value === 'string' ? value : JSON.stringify(value);
+        return [key, stringValue];
+      });
+      await AsyncStorage.multiSet(stringPairs);
+    } catch (error) {
+      console.error('Error batch saving settings:', error);
+    }
+  },
+
   getAllSettings: async (): Promise<Map<string, string | null>> => {
     try {
       const allKeys = Object.values(KEYS);
@@ -2839,8 +2856,12 @@ export const StorageService = {
   getLockscreenControlsEnabled: async (): Promise<boolean> => {
     try {
       const value = await AsyncStorage.getItem(KEYS.LOCKSCREEN_CONTROLS_ENABLED);
-      if (value !== null) {
-        return JSON.parse(value);
+      if (value !== null && value !== '' && value !== 'null') {
+        try {
+          return JSON.parse(value);
+        } catch {
+          return false;
+        }
       }
 
       const legacyValues = await AsyncStorage.multiGet([
@@ -2852,7 +2873,15 @@ export const StorageService = {
         KEYS.LOCKSCREEN_BRIGHTNESS_ENABLED,
         KEYS.LOCKSCREEN_ROTATION_LOCK_ENABLED,
       ]);
-      return legacyValues.some(([, stored]) => stored ? JSON.parse(stored) : false);
+
+      return legacyValues.some(([, stored]) => {
+        if (!stored || stored === 'null' || stored === '') return false;
+        try {
+          return JSON.parse(stored);
+        } catch {
+          return false;
+        }
+      });
     } catch (error) {
       console.error('Error getting lockscreen controls enabled:', error);
       return false;
