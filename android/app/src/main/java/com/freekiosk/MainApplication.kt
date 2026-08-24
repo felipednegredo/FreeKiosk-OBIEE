@@ -44,6 +44,9 @@ class MainApplication : Application(), ReactApplication {
 
   override fun onCreate() {
     super.onCreate()
+    // Record why the process died (native or JS) so a field crash can be read
+    // back from Settings -> Advanced instead of needing adb logcat.
+    CrashLog.install(this)
     loadReactNative(this)
   }
 }

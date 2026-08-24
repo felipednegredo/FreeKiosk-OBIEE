@@ -33,6 +33,24 @@ interface PinAttempts {
   lockoutUntil: number | null;
 }
 
+// Keychain calls go through the AndroidKeyStore and a DataStore-backed preference
+// file; on some devices/firmwares one of those can stall instead of failing, which
+// would leave a settings save awaiting forever with no feedback. Never wait more
+// than this — the AsyncStorage fallback below keeps the credential usable.
+const KEYCHAIN_TIMEOUT_MS = 5000;
+
+function withKeychainTimeout<T>(operation: Promise<T>, fallbackValue: T, label: string): Promise<T> {
+  return Promise.race([
+    operation,
+    new Promise<T>(resolve => {
+      setTimeout(() => {
+        console.warn(`[SecureStorage] ${label} timed out after ${KEYCHAIN_TIMEOUT_MS}ms`);
+        resolve(fallbackValue);
+      }, KEYCHAIN_TIMEOUT_MS);
+    }),
+  ]);
+}
+
 const wifiPasswordService = (ssid: string): string =>
   `${WIFI_PASSWORD_SERVICE_PREFIX}${encodeURIComponent(ssid)}`;
 
@@ -238,14 +256,22 @@ export async function saveSecurePin(pin: string): Promise<boolean> {
     // Primary store: Android Keystore via react-native-keychain.
     let keychainOk = false;
     try {
-      await Keychain.setGenericPassword('pin', payload, {
-        service: PIN_SERVICE,
-        accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED,
-      });
+      await withKeychainTimeout(
+        Keychain.setGenericPassword('pin', payload, {
+          service: PIN_SERVICE,
+          accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED,
+        }),
+        false,
+        'PIN Keychain write'
+      );
       // Read-back check: some firmwares (e.g. Rockchip RK3568 signage boards,
       // issue #200) report a successful write but never persist a readable
       // value. Trust the Keychain only if we can read the payload straight back.
-      const check = await Keychain.getGenericPassword({ service: PIN_SERVICE });
+      const check = await withKeychainTimeout(
+        Keychain.getGenericPassword({ service: PIN_SERVICE }),
+        false as false,
+        'PIN Keychain read-back'
+      );
       keychainOk = !!check && check.password === payload;
     } catch (e) {
       console.warn('[SecureStorage] Keychain write/read-back failed:', e);
@@ -842,12 +868,20 @@ export async function saveSecureBasicAuthPassword(password: string): Promise<boo
     // Primary store: Keychain
     let keychainOk = false;
     try {
-      await Keychain.setGenericPassword('basic_auth_password', password, {
-        service: BASIC_AUTH_PASSWORD_SERVICE,
-        accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED,
-      });
+      await withKeychainTimeout(
+        Keychain.setGenericPassword('basic_auth_password', password, {
+          service: BASIC_AUTH_PASSWORD_SERVICE,
+          accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED,
+        }),
+        false,
+        'Basic Auth Keychain write'
+      );
       // Read-back check for broken keystores (issue #200)
-      const check = await Keychain.getGenericPassword({ service: BASIC_AUTH_PASSWORD_SERVICE });
+      const check = await withKeychainTimeout(
+        Keychain.getGenericPassword({ service: BASIC_AUTH_PASSWORD_SERVICE }),
+        false as false,
+        'Basic Auth Keychain read-back'
+      );
       keychainOk = !!check && check.password === password;
     } catch (e) {
       console.warn('[SecureStorage] Basic Auth Keychain write failed:', e);
@@ -871,7 +905,11 @@ export async function getSecureBasicAuthPassword(): Promise<string> {
   try {
     let credentials: Awaited<ReturnType<typeof Keychain.getGenericPassword>> = false;
     try {
-      credentials = await Keychain.getGenericPassword({ service: BASIC_AUTH_PASSWORD_SERVICE });
+      credentials = await withKeychainTimeout(
+        Keychain.getGenericPassword({ service: BASIC_AUTH_PASSWORD_SERVICE }),
+        false as false,
+        'Basic Auth Keychain read'
+      );
     } catch (e) {
       console.warn('[SecureStorage] Basic Auth Keychain read failed:', e);
     }

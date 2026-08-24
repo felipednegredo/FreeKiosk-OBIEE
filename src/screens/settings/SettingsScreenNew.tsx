@@ -29,6 +29,7 @@ import UpdateModule, { ENABLE_SELF_UPDATE } from '../../utils/UpdateModule';
 import AutoBrightnessModule from '../../utils/AutoBrightnessModule';
 import { httpServer } from '../../utils/HttpServerModule';
 import { hasSettingsAccess, revokeSettingsAccess } from '../../utils/authState';
+import { logCrash } from '../../utils/CrashLog';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
 
@@ -1254,7 +1255,25 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
 
   // ============ SAVE FUNCTION ============
 
+  /**
+   * Save entry point. performSave() below guards each step individually, but if
+   * anything still escapes (a native module rejecting, a storage write failing)
+   * the save would end silently with the config half-written — and on a release
+   * build an unhandled error can take the whole app down. Catch it, record it in
+   * the crash log and tell the user which step failed.
+   */
   const handleSave = async (): Promise<void> => {
+    try {
+      await performSave();
+    } catch (error: any) {
+      const message = error?.message || String(error);
+      console.error('[Settings] Save failed:', error);
+      logCrash('SETTINGS SAVE FAILED', `${message}\n${error?.stack ?? '(no stack)'}`);
+      Alert.alert('Save Failed', `The configuration could not be saved:\n\n${message}`);
+    }
+  };
+
+  const performSave = async (): Promise<void> => {
     // Validation
     if (displayMode === 'webview' && !url && !dashboardModeEnabled) {
       Alert.alert('Error', 'Please enter a URL');

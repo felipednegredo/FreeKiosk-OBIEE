@@ -12,6 +12,7 @@ export { default as SettingsInfoBox } from './SettingsInfoBox';
 export { default as SettingsModeSelector } from './SettingsModeSelector';
 export { default as UrlListEditor } from './UrlListEditor';
 export { default as BackupRestoreSection } from './BackupRestoreSection';
+export { default as CrashLogSection } from './CrashLogSection';
 export { default as ManagedAppsSection } from './ManagedAppsSection';
 
 // URL Planner components
