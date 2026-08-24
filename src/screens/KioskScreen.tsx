@@ -1464,10 +1464,15 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
         const n = parseFloat(v);
         return isNaN(n) ? def : n;
       };
-      const jsonParse = (key: string, def: unknown): unknown => {
+      const jsonParse = (key: string, def: any): any => {
         const v = settings.get(key);
-        if (v == null) return def;
-        try { return JSON.parse(v); } catch { return def; }
+        if (v == null || v === 'null') return def;
+        try {
+          const parsed = JSON.parse(v);
+          return parsed ?? def;
+        } catch {
+          return def;
+        }
       };
 
       const savedUrl = str(K.URL);

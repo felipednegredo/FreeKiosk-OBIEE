@@ -431,293 +431,298 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
   };
 
   const loadSettings = async (): Promise<void> => {
-    const savedUrl = await StorageService.getUrl();
-    const savedAutoReload = await StorageService.getAutoReload();
-    const savedAutoReloadDelay = await StorageService.getAutoReloadDelay();
-    const savedKioskEnabled = await StorageService.getKioskEnabled();
-    const savedAutoLaunch = await StorageService.getAutoLaunch();
-    const savedScreenLockCompat = await StorageService.getScreenLockCompat();
-    const savedDefaultLauncher = await StorageService.getDefaultLauncher();
-    const savedScreensaverEnabled = await StorageService.getScreensaverEnabled();
-    const savedDefaultBrightness = await StorageService.getDefaultBrightness();
-    const savedInactivityDelay = await StorageService.getScreensaverInactivityDelay();
-    const savedMotionEnabled = await StorageService.getScreensaverMotionEnabled();
-    const savedMotionSensitivity = await StorageService.getScreensaverMotionSensitivity();
-    const savedMotionCameraPosition = await StorageService.getMotionCameraPosition();
-    const savedScreensaverBrightness = await StorageService.getScreensaverBrightness();
-    const savedScreensaverType = await StorageService.getScreensaverType();
-    const savedScreensaverUrl = await StorageService.getScreensaverUrl();
-    const savedScreensaverVideoItems = await StorageService.getScreensaverVideoItems<MediaItem>();
-    const savedScreensaverVideoLoop = await StorageService.getScreensaverVideoLoop();
-    const hasPinConfigured = await hasSecurePin();
-    
-    setIsPinConfigured(hasPinConfigured);
-    if (savedUrl) setUrl(savedUrl);
-    if (hasPinConfigured) setPin('');
-
-    setAutoReload(savedAutoReload);
-    setAutoReloadDelay(String(savedAutoReloadDelay));
-    setKioskEnabled(savedKioskEnabled);
-    setAutoLaunchEnabled(savedAutoLaunch ?? false);
-    setScreenLockCompatEnabled(savedScreenLockCompat ?? false);
-    setDefaultLauncherEnabled(savedDefaultLauncher ?? false);
-    // Ensure BootReceiver component state matches the setting
-    // This fixes installations where the component was previously disabled
     try {
-      if (savedAutoLaunch) {
-        await KioskModule.enableAutoLaunch();
+      const savedUrl = await StorageService.getUrl();
+      const savedAutoReload = await StorageService.getAutoReload();
+      const savedAutoReloadDelay = await StorageService.getAutoReloadDelay();
+      const savedKioskEnabled = await StorageService.getKioskEnabled();
+      const savedAutoLaunch = await StorageService.getAutoLaunch();
+      const savedScreenLockCompat = await StorageService.getScreenLockCompat();
+      const savedDefaultLauncher = await StorageService.getDefaultLauncher();
+      const savedScreensaverEnabled = await StorageService.getScreensaverEnabled();
+      const savedDefaultBrightness = await StorageService.getDefaultBrightness();
+      const savedInactivityDelay = await StorageService.getScreensaverInactivityDelay();
+      const savedMotionEnabled = await StorageService.getScreensaverMotionEnabled();
+      const savedMotionSensitivity = await StorageService.getScreensaverMotionSensitivity();
+      const savedMotionCameraPosition = await StorageService.getMotionCameraPosition();
+      const savedScreensaverBrightness = await StorageService.getScreensaverBrightness();
+      const savedScreensaverType = await StorageService.getScreensaverType();
+      const savedScreensaverUrl = await StorageService.getScreensaverUrl();
+      const savedScreensaverVideoItems = await StorageService.getScreensaverVideoItems<MediaItem>();
+      const savedScreensaverVideoLoop = await StorageService.getScreensaverVideoLoop();
+      const hasPinConfigured = await hasSecurePin();
+
+      setIsPinConfigured(hasPinConfigured);
+      if (savedUrl) setUrl(savedUrl);
+      if (hasPinConfigured) setPin('');
+
+      setAutoReload(savedAutoReload);
+      setAutoReloadDelay(String(savedAutoReloadDelay));
+      setKioskEnabled(savedKioskEnabled);
+      setAutoLaunchEnabled(savedAutoLaunch ?? false);
+      setScreenLockCompatEnabled(savedScreenLockCompat ?? false);
+      setDefaultLauncherEnabled(savedDefaultLauncher ?? false);
+      // Ensure BootReceiver component state matches the setting
+      // This fixes installations where the component was previously disabled
+      try {
+        if (savedAutoLaunch) {
+          await KioskModule.enableAutoLaunch();
+        }
+      } catch (e) {
+        // Silent fail
       }
-    } catch (e) {
-      // Silent fail
-    }
-    setScreensaverEnabled(savedScreensaverEnabled ?? false);
-    setDefaultBrightness(savedDefaultBrightness ?? 0.5);
-    setMotionEnabled(savedMotionEnabled ?? false);
-    setMotionSensitivity((savedMotionSensitivity as 'low' | 'medium' | 'high') ?? 'medium');
-    setMotionCameraPosition(savedMotionCameraPosition ?? 'front');
-    setScreensaverBrightness(savedScreensaverBrightness ?? 0);
-    setScreensaverType(savedScreensaverType);
-    setScreensaverUrl(savedScreensaverUrl);
-    setScreensaverVideoItems(savedScreensaverVideoItems);
-    setScreensaverVideoLoop(savedScreensaverVideoLoop);
+      setScreensaverEnabled(savedScreensaverEnabled ?? false);
+      setDefaultBrightness(savedDefaultBrightness ?? 0.5);
+      setMotionEnabled(savedMotionEnabled ?? false);
+      setMotionSensitivity((savedMotionSensitivity as 'low' | 'medium' | 'high') ?? 'medium');
+      setMotionCameraPosition(savedMotionCameraPosition ?? 'front');
+      setScreensaverBrightness(savedScreensaverBrightness ?? 0);
+      setScreensaverType(savedScreensaverType);
+      setScreensaverUrl(savedScreensaverUrl);
+      setScreensaverVideoItems(savedScreensaverVideoItems || []);
+      setScreensaverVideoLoop(savedScreensaverVideoLoop);
 
-    // Detect available cameras (first attempt — may return [] on slow SoCs before
-    // ProcessCameraProvider resolves; the CameraDevicesChanged listener handles the retry)
-    detectCameras();
+      // Detect available cameras (first attempt — may return [] on slow SoCs before
+      // ProcessCameraProvider resolves; the CameraDevicesChanged listener handles the retry)
+      detectCameras();
 
-    if (savedInactivityDelay && !isNaN(savedInactivityDelay)) {
-      setInactivityDelay(String(Math.floor(savedInactivityDelay / 60000)));
-    } else {
-      setInactivityDelay('10');
-    }
+      if (savedInactivityDelay && !isNaN(savedInactivityDelay)) {
+        setInactivityDelay(String(Math.floor(savedInactivityDelay / 60000)));
+      } else {
+        setInactivityDelay('10');
+      }
 
-    // External app settings
-    const savedDisplayMode = await StorageService.getDisplayMode();
-    const savedExternalAppPackage = await StorageService.getExternalAppPackage();
-    const savedAutoRelaunchApp = await StorageService.getAutoRelaunchApp();
-    const savedOverlayButtonVisible = await StorageService.getOverlayButtonVisible();
-    const savedOverlayButtonOpacity = await StorageService.getOverlayButtonOpacity();
-    const savedPinMaxAttempts = await StorageService.getPinMaxAttempts();
-    const savedStatusBarEnabled = await StorageService.getStatusBarEnabled();
-    const savedStatusBarOnOverlay = await StorageService.getStatusBarOnOverlay();
-    const savedStatusBarOnReturn = await StorageService.getStatusBarOnReturn();
-    const savedShowBattery = await StorageService.getStatusBarShowBattery();
-    const savedShowWifi = await StorageService.getStatusBarShowWifi();
-    const savedShowBluetooth = await StorageService.getStatusBarShowBluetooth();
-    const savedShowVolume = await StorageService.getStatusBarShowVolume();
-    const savedShowTime = await StorageService.getStatusBarShowTime();
-    const savedStatusBarTheme = await StorageService.getStatusBarTheme();
-    const savedBackButtonMode = await StorageService.getBackButtonMode();
-    const savedBackButtonTimerDelay = await StorageService.getBackButtonTimerDelay();
-    const savedKeyboardMode = await StorageService.getKeyboardMode();
-    const savedAllowPowerButton = await StorageService.getAllowPowerButton();
-    const savedBlockFactoryReset = await StorageService.getBlockFactoryReset();
-    const savedAllowNotifications = await StorageService.getAllowNotifications();
-    const savedAllowSystemInfo = await StorageService.getAllowSystemInfo();
-    const savedReturnMode = await StorageService.getReturnMode();
-    const savedReturnTapCount = await StorageService.getReturnTapCount();
-    const savedReturnTapTimeout = await StorageService.getReturnTapTimeout();
-    const savedReturnButtonPosition = await StorageService.getReturnButtonPosition();
-    const savedVolumeUp5TapEnabled = await StorageService.getVolumeUp5TapEnabled();
-    
-    // URL Rotation settings
-    const savedUrlRotationEnabled = await StorageService.getUrlRotationEnabled();
-    const savedUrlRotationList = await StorageService.getUrlRotationList();
-    const savedUrlRotationInterval = await StorageService.getUrlRotationInterval();
-    
-    // URL Planner settings
-    const savedUrlPlannerEnabled = await StorageService.getUrlPlannerEnabled();
-    const savedUrlPlannerEvents = await StorageService.getUrlPlannerEvents();
+      // External app settings
+      const savedDisplayMode = await StorageService.getDisplayMode();
+      const savedExternalAppPackage = await StorageService.getExternalAppPackage();
+      const savedAutoRelaunchApp = await StorageService.getAutoRelaunchApp();
+      const savedOverlayButtonVisible = await StorageService.getOverlayButtonVisible();
+      const savedOverlayButtonOpacity = await StorageService.getOverlayButtonOpacity();
+      const savedPinMaxAttempts = await StorageService.getPinMaxAttempts();
+      const savedStatusBarEnabled = await StorageService.getStatusBarEnabled();
+      const savedStatusBarOnOverlay = await StorageService.getStatusBarOnOverlay();
+      const savedStatusBarOnReturn = await StorageService.getStatusBarOnReturn();
+      const savedShowBattery = await StorageService.getStatusBarShowBattery();
+      const savedShowWifi = await StorageService.getStatusBarShowWifi();
+      const savedShowBluetooth = await StorageService.getStatusBarShowBluetooth();
+      const savedShowVolume = await StorageService.getStatusBarShowVolume();
+      const savedShowTime = await StorageService.getStatusBarShowTime();
+      const savedStatusBarTheme = await StorageService.getStatusBarTheme();
+      const savedBackButtonMode = await StorageService.getBackButtonMode();
+      const savedBackButtonTimerDelay = await StorageService.getBackButtonTimerDelay();
+      const savedKeyboardMode = await StorageService.getKeyboardMode();
+      const savedAllowPowerButton = await StorageService.getAllowPowerButton();
+      const savedBlockFactoryReset = await StorageService.getBlockFactoryReset();
+      const savedAllowNotifications = await StorageService.getAllowNotifications();
+      const savedAllowSystemInfo = await StorageService.getAllowSystemInfo();
+      const savedReturnMode = await StorageService.getReturnMode();
+      const savedReturnTapCount = await StorageService.getReturnTapCount();
+      const savedReturnTapTimeout = await StorageService.getReturnTapTimeout();
+      const savedReturnButtonPosition = await StorageService.getReturnButtonPosition();
+      const savedVolumeUp5TapEnabled = await StorageService.getVolumeUp5TapEnabled();
 
-    // WebView Back Button settings
-    const savedWebViewBackButtonEnabled = await StorageService.getWebViewBackButtonEnabled();
-    const savedWebViewBackButtonXPercent = await StorageService.getWebViewBackButtonXPercent();
-    const savedWebViewBackButtonYPercent = await StorageService.getWebViewBackButtonYPercent();
-    
-    // Auto-Brightness settings
-    const savedAutoBrightnessEnabled = await StorageService.getAutoBrightnessEnabled();
-    const savedAutoBrightnessMin = await StorageService.getAutoBrightnessMin();
-    const savedAutoBrightnessMax = await StorageService.getAutoBrightnessMax();
-    const savedAutoBrightnessOffset = await StorageService.getAutoBrightnessOffset();
+      // URL Rotation settings
+      const savedUrlRotationEnabled = await StorageService.getUrlRotationEnabled();
+      const savedUrlRotationList = await StorageService.getUrlRotationList();
+      const savedUrlRotationInterval = await StorageService.getUrlRotationInterval();
 
-    // Brightness Management
-    const savedBrightnessManagementEnabled = await StorageService.getBrightnessManagementEnabled();
+      // URL Planner settings
+      const savedUrlPlannerEnabled = await StorageService.getUrlPlannerEnabled();
+      const savedUrlPlannerEvents = await StorageService.getUrlPlannerEvents();
 
-    // Screen Sleep Scheduler settings
-    const savedScreenSchedulerEnabled = await StorageService.getScreenSchedulerEnabled();
-    const savedScreenSchedulerRules = await StorageService.getScreenSchedulerRules();
-    const savedScreenSchedulerWakeOnTouch = await StorageService.getScreenSchedulerWakeOnTouch();
-    const savedKeepScreenOn = await StorageService.getKeepScreenOn();
+      // WebView Back Button settings
+      const savedWebViewBackButtonEnabled = await StorageService.getWebViewBackButtonEnabled();
+      const savedWebViewBackButtonXPercent = await StorageService.getWebViewBackButtonXPercent();
+      const savedWebViewBackButtonYPercent = await StorageService.getWebViewBackButtonYPercent();
 
-    setDisplayMode(savedDisplayMode);
-    setExternalAppPackage(savedExternalAppPackage ?? '');
-    setAutoRelaunchApp(savedAutoRelaunchApp);
+      // Auto-Brightness settings
+      const savedAutoBrightnessEnabled = await StorageService.getAutoBrightnessEnabled();
+      const savedAutoBrightnessMin = await StorageService.getAutoBrightnessMin();
+      const savedAutoBrightnessMax = await StorageService.getAutoBrightnessMax();
+      const savedAutoBrightnessOffset = await StorageService.getAutoBrightnessOffset();
 
-    // Managed apps
-    const savedManagedApps = await StorageService.getManagedApps();
-    setManagedApps(savedManagedApps);
-    
-    // External app sub-mode
-    const savedExternalAppMode = await StorageService.getExternalAppMode();
-    setExternalAppMode(savedExternalAppMode);
+      // Brightness Management
+      const savedBrightnessManagementEnabled = await StorageService.getBrightnessManagementEnabled();
 
-    setOverlayButtonVisible(savedOverlayButtonVisible);
-    setOverlayButtonOpacity(savedOverlayButtonOpacity);
-    setPinMaxAttempts(savedPinMaxAttempts);
-    setPinMaxAttemptsText(String(savedPinMaxAttempts));
-    const savedPinMode = await StorageService.getPinMode();
-    setPinMode(savedPinMode);
-    setInitialPinMode(savedPinMode);
-    setPinModeChanged(false);
-    setStatusBarEnabled(savedStatusBarEnabled);
-    setStatusBarOnOverlay(savedStatusBarOnOverlay);
-    setStatusBarOnReturn(savedStatusBarOnReturn);
-    setShowBattery(savedShowBattery);
-    setShowWifi(savedShowWifi);
-    setShowBluetooth(savedShowBluetooth);
-    setShowVolume(savedShowVolume);
-    setShowTime(savedShowTime);
-    setStatusBarTheme(savedStatusBarTheme);
-    setBackButtonMode(savedBackButtonMode);
-    setBackButtonTimerDelay(String(savedBackButtonTimerDelay));
-    setKeyboardMode(savedKeyboardMode);
-    setAllowPowerButton(savedAllowPowerButton);
-    setBlockFactoryReset(savedBlockFactoryReset);
-    setAllowNotifications(savedAllowNotifications);
-    setAllowSystemInfo(savedAllowSystemInfo);
-    setReturnMode(savedReturnMode);
-    setReturnTapCount(String(savedReturnTapCount));
-    setReturnTapTimeout(String(savedReturnTapTimeout));
-    setReturnButtonPosition(savedReturnButtonPosition);
-    setVolumeUp5TapEnabled(savedVolumeUp5TapEnabled);
-    setUrlRotationEnabled(savedUrlRotationEnabled);
-    setUrlRotationList(savedUrlRotationList);
-    setUrlRotationInterval(String(savedUrlRotationInterval));
-    setUrlPlannerEnabled(savedUrlPlannerEnabled);
-    setUrlPlannerEvents(savedUrlPlannerEvents);
-    setWebViewBackButtonEnabled(savedWebViewBackButtonEnabled);
-    setWebViewBackButtonXPercent(String(savedWebViewBackButtonXPercent));
-    setWebViewBackButtonYPercent(String(savedWebViewBackButtonYPercent));
-    setAutoBrightnessEnabled(savedAutoBrightnessEnabled);
-    setAutoBrightnessMin(savedAutoBrightnessMin);
-    setAutoBrightnessMax(savedAutoBrightnessMax);
-    setAutoBrightnessOffset(savedAutoBrightnessOffset);
-    setBrightnessManagementEnabled(savedBrightnessManagementEnabled);
-    setScreenSchedulerEnabled(savedScreenSchedulerEnabled);
-    setScreenSchedulerRules(savedScreenSchedulerRules);
-    setScreenSchedulerWakeOnTouch(savedScreenSchedulerWakeOnTouch);
-    setKeepScreenOn(savedKeepScreenOn);
+      // Screen Sleep Scheduler settings
+      const savedScreenSchedulerEnabled = await StorageService.getScreenSchedulerEnabled();
+      const savedScreenSchedulerRules = await StorageService.getScreenSchedulerRules();
+      const savedScreenSchedulerWakeOnTouch = await StorageService.getScreenSchedulerWakeOnTouch();
+      const savedKeepScreenOn = await StorageService.getKeepScreenOn();
 
-    const savedAutoWakeOnScreenOff = await StorageService.getAutoWakeOnScreenOff();
-    setAutoWakeOnScreenOff(savedAutoWakeOnScreenOff);
+      setDisplayMode(savedDisplayMode);
+      setExternalAppPackage(savedExternalAppPackage ?? '');
+      setAutoRelaunchApp(savedAutoRelaunchApp);
 
-    // Inactivity Return to Home settings
-    const savedInactivityReturnEnabled = await StorageService.getInactivityReturnEnabled();
-    const savedInactivityReturnDelay = await StorageService.getInactivityReturnDelay();
-    const savedInactivityReturnResetOnNav = await StorageService.getInactivityReturnResetOnNav();
-    const savedInactivityReturnClearCache = await StorageService.getInactivityReturnClearCache();
-    setInactivityReturnEnabled(savedInactivityReturnEnabled);
-    setInactivityReturnDelay(String(savedInactivityReturnDelay));
-    setInactivityReturnResetOnNav(savedInactivityReturnResetOnNav);
-    const savedInactivityReturnScrollTop = await StorageService.getInactivityReturnScrollTop();
-    setInactivityReturnClearCache(savedInactivityReturnClearCache);
-    setInactivityReturnScrollTop(savedInactivityReturnScrollTop);
+      // Managed apps
+      const savedManagedApps = await StorageService.getManagedApps();
+      setManagedApps(savedManagedApps || []);
 
-    // URL Filtering settings
-    const savedUrlFilterEnabled = await StorageService.getUrlFilterEnabled();
-    const savedUrlFilterMode = await StorageService.getUrlFilterMode();
-    const savedUrlFilterList = await StorageService.getUrlFilterList();
-    const savedUrlFilterShowFeedback = await StorageService.getUrlFilterShowFeedback();
-    setUrlFilterEnabled(savedUrlFilterEnabled);
-    setUrlFilterMode(savedUrlFilterMode);
-    setUrlFilterList(savedUrlFilterList);
-    setUrlFilterShowFeedback(savedUrlFilterShowFeedback);
+      // External app sub-mode
+      const savedExternalAppMode = await StorageService.getExternalAppMode();
+      setExternalAppMode(savedExternalAppMode);
 
-    // Lock Screen Controls settings
-    const savedLockscreenControls = await StorageService.getLockscreenControlsEnabled();
-    const savedLockscreenWifi = await StorageService.getLockscreenWifiEnabled();
-    const savedLockscreenBt = await StorageService.getLockscreenBluetoothEnabled();
-    const savedLockscreenEmergency = await StorageService.getLockscreenEmergencyCallEnabled();
-    const savedLockscreenAudio = await StorageService.getLockscreenAudioEnabled();
-    const savedLockscreenFlashlight = await StorageService.getLockscreenFlashlightEnabled();
-    const savedLockscreenBrightness = await StorageService.getLockscreenBrightnessEnabled();
-    const savedLockscreenRotationLock = await StorageService.getLockscreenRotationLockEnabled();
-    let rotationLockAvailable = false;
-    try {
-      rotationLockAvailable = Boolean(await RotationControlModule?.isAvailable?.());
+      setOverlayButtonVisible(savedOverlayButtonVisible);
+      setOverlayButtonOpacity(savedOverlayButtonOpacity);
+      setPinMaxAttempts(savedPinMaxAttempts);
+      setPinMaxAttemptsText(String(savedPinMaxAttempts));
+      const savedPinMode = await StorageService.getPinMode();
+      setPinMode(savedPinMode);
+      setInitialPinMode(savedPinMode);
+      setPinModeChanged(false);
+      setStatusBarEnabled(savedStatusBarEnabled);
+      setStatusBarOnOverlay(savedStatusBarOnOverlay);
+      setStatusBarOnReturn(savedStatusBarOnReturn);
+      setShowBattery(savedShowBattery);
+      setShowWifi(savedShowWifi);
+      setShowBluetooth(savedShowBluetooth);
+      setShowVolume(savedShowVolume);
+      setShowTime(savedShowTime);
+      setStatusBarTheme(savedStatusBarTheme);
+      setBackButtonMode(savedBackButtonMode);
+      setBackButtonTimerDelay(String(savedBackButtonTimerDelay));
+      setKeyboardMode(savedKeyboardMode);
+      setAllowPowerButton(savedAllowPowerButton);
+      setBlockFactoryReset(savedBlockFactoryReset);
+      setAllowNotifications(savedAllowNotifications);
+      setAllowSystemInfo(savedAllowSystemInfo);
+      setReturnMode(savedReturnMode);
+      setReturnTapCount(String(savedReturnTapCount));
+      setReturnTapTimeout(String(savedReturnTapTimeout));
+      setReturnButtonPosition(savedReturnButtonPosition);
+      setVolumeUp5TapEnabled(savedVolumeUp5TapEnabled);
+      setUrlRotationEnabled(savedUrlRotationEnabled);
+      setUrlRotationList(savedUrlRotationList || []);
+      setUrlRotationInterval(String(savedUrlRotationInterval));
+      setUrlPlannerEnabled(savedUrlPlannerEnabled);
+      setUrlPlannerEvents(savedUrlPlannerEvents || []);
+      setWebViewBackButtonEnabled(savedWebViewBackButtonEnabled);
+      setWebViewBackButtonXPercent(String(savedWebViewBackButtonXPercent));
+      setWebViewBackButtonYPercent(String(savedWebViewBackButtonYPercent));
+      setAutoBrightnessEnabled(savedAutoBrightnessEnabled);
+      setAutoBrightnessMin(savedAutoBrightnessMin);
+      setAutoBrightnessMax(savedAutoBrightnessMax);
+      setAutoBrightnessOffset(savedAutoBrightnessOffset);
+      setBrightnessManagementEnabled(savedBrightnessManagementEnabled);
+      setScreenSchedulerEnabled(savedScreenSchedulerEnabled);
+      setScreenSchedulerRules(savedScreenSchedulerRules || []);
+      setScreenSchedulerWakeOnTouch(savedScreenSchedulerWakeOnTouch);
+      setKeepScreenOn(savedKeepScreenOn);
+
+      const savedAutoWakeOnScreenOff = await StorageService.getAutoWakeOnScreenOff();
+      setAutoWakeOnScreenOff(savedAutoWakeOnScreenOff);
+
+      // Inactivity Return to Home settings
+      const savedInactivityReturnEnabled = await StorageService.getInactivityReturnEnabled();
+      const savedInactivityReturnDelay = await StorageService.getInactivityReturnDelay();
+      const savedInactivityReturnResetOnNav = await StorageService.getInactivityReturnResetOnNav();
+      const savedInactivityReturnClearCache = await StorageService.getInactivityReturnClearCache();
+      setInactivityReturnEnabled(savedInactivityReturnEnabled);
+      setInactivityReturnDelay(String(savedInactivityReturnDelay));
+      setInactivityReturnResetOnNav(savedInactivityReturnResetOnNav);
+      const savedInactivityReturnScrollTop = await StorageService.getInactivityReturnScrollTop();
+      setInactivityReturnClearCache(savedInactivityReturnClearCache);
+      setInactivityReturnScrollTop(savedInactivityReturnScrollTop);
+
+      // URL Filtering settings
+      const savedUrlFilterEnabled = await StorageService.getUrlFilterEnabled();
+      const savedUrlFilterMode = await StorageService.getUrlFilterMode();
+      const savedUrlFilterList = await StorageService.getUrlFilterList();
+      const savedUrlFilterShowFeedback = await StorageService.getUrlFilterShowFeedback();
+      setUrlFilterEnabled(savedUrlFilterEnabled);
+      setUrlFilterMode(savedUrlFilterMode);
+      setUrlFilterList(savedUrlFilterList || []);
+      setUrlFilterShowFeedback(savedUrlFilterShowFeedback);
+
+      // Lock Screen Controls settings
+      const savedLockscreenControls = await StorageService.getLockscreenControlsEnabled();
+      const savedLockscreenWifi = await StorageService.getLockscreenWifiEnabled();
+      const savedLockscreenBt = await StorageService.getLockscreenBluetoothEnabled();
+      const savedLockscreenEmergency = await StorageService.getLockscreenEmergencyCallEnabled();
+      const savedLockscreenAudio = await StorageService.getLockscreenAudioEnabled();
+      const savedLockscreenFlashlight = await StorageService.getLockscreenFlashlightEnabled();
+      const savedLockscreenBrightness = await StorageService.getLockscreenBrightnessEnabled();
+      const savedLockscreenRotationLock = await StorageService.getLockscreenRotationLockEnabled();
+      let rotationLockAvailable = false;
+      try {
+        rotationLockAvailable = Boolean(await RotationControlModule?.isAvailable?.());
+      } catch (error) {
+        rotationLockAvailable = false;
+      }
+      setLockscreenControlsEnabled(savedLockscreenControls);
+      setLockscreenRotationLockAvailable(rotationLockAvailable);
+      setLockscreenWifiEnabled(savedLockscreenWifi);
+      setLockscreenBluetoothEnabled(savedLockscreenBt);
+      setLockscreenEmergencyCallEnabled(savedLockscreenEmergency);
+      setLockscreenAudioEnabled(savedLockscreenAudio);
+      setLockscreenFlashlightEnabled(savedLockscreenFlashlight);
+      setLockscreenBrightnessEnabled(savedLockscreenBrightness);
+      setLockscreenRotationLockEnabled(rotationLockAvailable && savedLockscreenRotationLock);
+
+      // PDF Viewer setting
+      const savedPdfViewerEnabled = await StorageService.getPdfViewerEnabled();
+      setPdfViewerEnabled(savedPdfViewerEnabled);
+
+      // Printing setting
+      const savedPrintEnabled = await StorageService.getPrintEnabled();
+      setPrintEnabled(savedPrintEnabled);
+      const savedPrintPaperSize = await StorageService.getPrintPaperSize();
+      setPrintPaperSize(savedPrintPaperSize);
+
+      // Dashboard settings
+      const savedDashboardModeEnabled = await StorageService.getDashboardModeEnabled();
+      setDashboardModeEnabled(savedDashboardModeEnabled);
+      // WebView Zoom Level
+      const savedZoomLevel = await StorageService.getWebViewZoomLevel();
+      setZoomLevel(savedZoomLevel);
+      const savedZoomMode = await StorageService.getWebViewZoomMode();
+      setZoomMode(savedZoomMode);
+      const savedDisableUserZoom = await StorageService.getDisableUserZoom();
+      setDisableUserZoom(savedDisableUserZoom);
+
+      // Custom User Agent
+      const savedCustomUserAgent = await StorageService.getCustomUserAgent();
+      setCustomUserAgent(savedCustomUserAgent);
+      const savedPauseWebMediaWhenHidden = await StorageService.getPauseWebMediaWhenHidden();
+      setPauseWebMediaWhenHidden(savedPauseWebMediaWhenHidden);
+      const savedIntercomMode = await StorageService.getIntercomMode();
+      setIntercomModeEnabled(savedIntercomMode ?? false);
+
+      const savedBasicAuthUsername = await StorageService.getHttpBasicAuthUsername();
+      const savedBasicAuthPassword = await getSecureBasicAuthPassword();
+      setBasicAuthUsername(savedBasicAuthUsername);
+      setBasicAuthPassword(savedBasicAuthPassword);
+
+      const savedOracleAutoLogin = await StorageService.getOracleAutoLoginEnabled();
+      setOracleAutoLoginEnabled(savedOracleAutoLogin);
+
+      // Media Player settings
+      const savedMediaItems = await StorageService.getMediaPlayerItems();
+      const savedMediaAutoPlay = await StorageService.getMediaPlayerAutoPlay();
+      const savedMediaLoop = await StorageService.getMediaPlayerLoop();
+      const savedMediaShuffle = await StorageService.getMediaPlayerShuffle();
+      const savedMediaImageDuration = await StorageService.getMediaPlayerImageDuration();
+      const savedMediaShowControls = await StorageService.getMediaPlayerShowControls();
+      const savedMediaFitMode = await StorageService.getMediaPlayerFitMode();
+      const savedMediaBgColor = await StorageService.getMediaPlayerBgColor();
+      const savedMediaTransition = await StorageService.getMediaPlayerTransition();
+      const savedMediaTransitionDuration = await StorageService.getMediaPlayerTransitionDuration();
+      const savedMediaMute = await StorageService.getMediaPlayerMute();
+      setMediaPlayerItems(savedMediaItems || []);
+      setMediaPlayerAutoPlay(savedMediaAutoPlay);
+      setMediaPlayerLoop(savedMediaLoop);
+      setMediaPlayerShuffle(savedMediaShuffle);
+      setMediaPlayerImageDuration(String(savedMediaImageDuration));
+      setMediaPlayerShowControls(savedMediaShowControls);
+      setMediaPlayerFitMode(savedMediaFitMode);
+      setMediaPlayerBgColor(savedMediaBgColor);
+      setMediaPlayerTransition(savedMediaTransition);
+      setMediaPlayerTransitionDuration(String(savedMediaTransitionDuration));
+      setMediaPlayerMute(savedMediaMute);
     } catch (error) {
-      rotationLockAvailable = false;
+      console.error('[Settings] Error loading settings:', error);
+      Alert.alert('Error', 'Failed to load some settings. Please check your configuration.');
     }
-    setLockscreenControlsEnabled(savedLockscreenControls);
-    setLockscreenRotationLockAvailable(rotationLockAvailable);
-    setLockscreenWifiEnabled(savedLockscreenWifi);
-    setLockscreenBluetoothEnabled(savedLockscreenBt);
-    setLockscreenEmergencyCallEnabled(savedLockscreenEmergency);
-    setLockscreenAudioEnabled(savedLockscreenAudio);
-    setLockscreenFlashlightEnabled(savedLockscreenFlashlight);
-    setLockscreenBrightnessEnabled(savedLockscreenBrightness);
-    setLockscreenRotationLockEnabled(rotationLockAvailable && savedLockscreenRotationLock);
-
-    // PDF Viewer setting
-    const savedPdfViewerEnabled = await StorageService.getPdfViewerEnabled();
-    setPdfViewerEnabled(savedPdfViewerEnabled);
-
-    // Printing setting
-    const savedPrintEnabled = await StorageService.getPrintEnabled();
-    setPrintEnabled(savedPrintEnabled);
-    const savedPrintPaperSize = await StorageService.getPrintPaperSize();
-    setPrintPaperSize(savedPrintPaperSize);
-
-    // Dashboard settings
-    const savedDashboardModeEnabled = await StorageService.getDashboardModeEnabled();
-    setDashboardModeEnabled(savedDashboardModeEnabled);
-    // WebView Zoom Level
-    const savedZoomLevel = await StorageService.getWebViewZoomLevel();
-    setZoomLevel(savedZoomLevel);
-    const savedZoomMode = await StorageService.getWebViewZoomMode();
-    setZoomMode(savedZoomMode);
-    const savedDisableUserZoom = await StorageService.getDisableUserZoom();
-    setDisableUserZoom(savedDisableUserZoom);
-
-    // Custom User Agent
-    const savedCustomUserAgent = await StorageService.getCustomUserAgent();
-    setCustomUserAgent(savedCustomUserAgent);
-    const savedPauseWebMediaWhenHidden = await StorageService.getPauseWebMediaWhenHidden();
-    setPauseWebMediaWhenHidden(savedPauseWebMediaWhenHidden);
-    const savedIntercomMode = await StorageService.getIntercomMode();
-    setIntercomModeEnabled(savedIntercomMode ?? false);
-
-    const savedBasicAuthUsername = await StorageService.getHttpBasicAuthUsername();
-    const savedBasicAuthPassword = await getSecureBasicAuthPassword();
-    setBasicAuthUsername(savedBasicAuthUsername);
-    setBasicAuthPassword(savedBasicAuthPassword);
-
-    const savedOracleAutoLogin = await StorageService.getOracleAutoLoginEnabled();
-    setOracleAutoLoginEnabled(savedOracleAutoLogin);
-
-    // Media Player settings
-    const savedMediaItems = await StorageService.getMediaPlayerItems();
-    const savedMediaAutoPlay = await StorageService.getMediaPlayerAutoPlay();
-    const savedMediaLoop = await StorageService.getMediaPlayerLoop();
-    const savedMediaShuffle = await StorageService.getMediaPlayerShuffle();
-    const savedMediaImageDuration = await StorageService.getMediaPlayerImageDuration();
-    const savedMediaShowControls = await StorageService.getMediaPlayerShowControls();
-    const savedMediaFitMode = await StorageService.getMediaPlayerFitMode();
-    const savedMediaBgColor = await StorageService.getMediaPlayerBgColor();
-    const savedMediaTransition = await StorageService.getMediaPlayerTransition();
-    const savedMediaTransitionDuration = await StorageService.getMediaPlayerTransitionDuration();
-    const savedMediaMute = await StorageService.getMediaPlayerMute();
-    setMediaPlayerItems(savedMediaItems);
-    setMediaPlayerAutoPlay(savedMediaAutoPlay);
-    setMediaPlayerLoop(savedMediaLoop);
-    setMediaPlayerShuffle(savedMediaShuffle);
-    setMediaPlayerImageDuration(String(savedMediaImageDuration));
-    setMediaPlayerShowControls(savedMediaShowControls);
-    setMediaPlayerFitMode(savedMediaFitMode);
-    setMediaPlayerBgColor(savedMediaBgColor);
-    setMediaPlayerTransition(savedMediaTransition);
-    setMediaPlayerTransitionDuration(String(savedMediaTransitionDuration));
-    setMediaPlayerMute(savedMediaMute);
   };
 
   const loadCertificates = async (): Promise<void> => {

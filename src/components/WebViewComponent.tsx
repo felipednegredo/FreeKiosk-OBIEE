@@ -422,9 +422,9 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
     };
     ` : '// Printing disabled - window.print() not intercepted'}
 
-    // Throttling pour éviter le flood de messages (critique sur Fire OS)
+    // Throttling pour éviter le flood de messages (critique sur Fire OS / Android TV)
     let lastInteraction = 0;
-    const THROTTLE_MS = 200; // Max 5 messages/sec
+    const THROTTLE_MS = 1000; // Max 1 message/sec - suffisant pour reset l'inactivité
 
     function sendInteraction() {
       const now = Date.now();
@@ -1261,6 +1261,16 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
 
         nestedScrollEnabled={true}
 
+        // Performance optimizations for TV and low-end devices
+        androidLayerType="hardware"
+        overScrollMode="never"
+        saveFormDataDisabled={true}
+        javaScriptCanOpenWindowsAutomatically={false}
+        decelerationRate="normal"
+        domStorageEnabled={true}
+        databaseEnabled={true}
+        renderPriority="high"
+
         mediaPlaybackRequiresUserAction={false}
         allowsInlineMediaPlayback={true}
 
@@ -1316,14 +1326,14 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
 
             <View style={styles.errorActions}>
               <TouchableOpacity style={styles.actionButton} onPress={handleReload}>
-                <Text style={styles.actionButtonText}>🔄 Recarregar Agora</Text>
+                <Text style={styles.actionButtonText}>🔄 Recarregar Página</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
                 style={[styles.actionButton, styles.settingsButton]}
                 onPress={handleNavigateToSettings}
               >
-                <Text style={styles.actionButtonText}>⚙️ Configurações</Text>
+                <Text style={styles.settingsButtonText}>⚙️ Voltar para Configurações</Text>
               </TouchableOpacity>
             </View>
 
@@ -1518,7 +1528,7 @@ const styles = StyleSheet.create({
   errorOverlay: {
     position: 'absolute',
     top: 0, left: 0, right: 0, bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    backgroundColor: '#fff',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
@@ -1526,16 +1536,10 @@ const styles = StyleSheet.create({
   },
   errorCard: {
     backgroundColor: '#fff',
-    borderRadius: 16,
     width: '100%',
-    maxWidth: 450,
+    maxWidth: 500,
     padding: 24,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
-    elevation: 10,
   },
   errorHeader: {
     flexDirection: 'row',
@@ -1602,24 +1606,30 @@ const styles = StyleSheet.create({
   },
   errorActions: {
     width: '100%',
-    gap: 12,
   },
   actionButton: {
     backgroundColor: '#0066cc',
-    paddingVertical: 14,
-    borderRadius: 10,
+    paddingVertical: 16,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+    width: '100%',
   },
   settingsButton: {
-    backgroundColor: '#f0f0f0',
+    backgroundColor: '#f8f9fa',
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: '#dee2e6',
+    marginTop: 8,
   },
   actionButtonText: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: 'bold',
+  },
+  settingsButtonText: {
+    color: '#495057',
+    fontSize: 16,
+    fontWeight: '600',
   },
   errorFooter: {
     marginTop: 20,

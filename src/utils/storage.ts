@@ -918,8 +918,10 @@ export const StorageService = {
   getManagedApps: async (): Promise<ManagedApp[]> => {
     try {
       const value = await AsyncStorage.getItem(KEYS.MANAGED_APPS);
-      if (!value) return [];
+      if (!value || value === 'null') return [];
       const parsed = JSON.parse(value);
+      if (!Array.isArray(parsed)) return [];
+
       // Ensure backward compatibility: add missing fields with defaults
       return parsed.map((app: any) => ({
         packageName: app.packageName || '',
@@ -1344,7 +1346,9 @@ export const StorageService = {
   getUrlRotationList: async (): Promise<(string | RotationUrl)[]> => {
     try {
       const value = await AsyncStorage.getItem(KEYS.URL_ROTATION_LIST);
-      return value ? JSON.parse(value) : [];
+      if (!value || value === 'null') return [];
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
     } catch (error) {
       console.error('Error getting URL rotation list:', error);
       return [];
@@ -1401,7 +1405,9 @@ export const StorageService = {
   getUrlPlannerEvents: async (): Promise<any[]> => {
     try {
       const value = await AsyncStorage.getItem(KEYS.URL_PLANNER_EVENTS);
-      return value ? JSON.parse(value) : [];
+      if (!value || value === 'null') return [];
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
     } catch (error) {
       console.error('Error getting URL planner events:', error);
       return [];
@@ -1683,7 +1689,9 @@ export const StorageService = {
   getBlockingOverlaysRegions: async (): Promise<BlockingRegion[]> => {
     try {
       const value = await AsyncStorage.getItem(KEYS.BLOCKING_OVERLAYS_REGIONS);
-      return value ? JSON.parse(value) : [];
+      if (!value || value === 'null') return [];
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
     } catch (error) {
       console.error('Error getting blocking overlays regions:', error);
       return [];

@@ -63,7 +63,15 @@ class BackgroundAppMonitorService : Service() {
         // MUST call startForeground() immediately to satisfy Android's requirement
         // (startForegroundService() requires startForeground() within 5 seconds)
         val notification = buildNotification()
-        startForeground(NOTIFICATION_ID, notification)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(
+                NOTIFICATION_ID,
+                notification,
+                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
 
         // Read keep-alive packages from AsyncStorage
         keepAlivePackages = readKeepAlivePackages()

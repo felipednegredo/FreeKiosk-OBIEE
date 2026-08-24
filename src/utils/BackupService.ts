@@ -455,17 +455,20 @@ export async function importBackupFromContent(jsonContent: string, fileName?: st
       try {
         const value = data.settings[key];
         if (value !== null && value !== undefined) {
+          // Handle API key separately - save to secure storage (Keychain)
           if (key === '@kiosk_rest_api_key') {
-            await saveSecureApiKey(value);
+            await saveSecureApiKey(String(value));
             console.log('[BackupService] API key imported to secure storage');
           } else if (key === '@kiosk_mqtt_password') {
-            await saveSecureMqttPassword(value);
+            await saveSecureMqttPassword(String(value));
             console.log('[BackupService] MQTT password imported to secure storage');
           } else if (key === '@kiosk_basic_auth_password') {
-            await saveSecureBasicAuthPassword(value);
+            await saveSecureBasicAuthPassword(String(value));
             console.log('[BackupService] Basic Auth password imported to secure storage');
           } else {
-            await AsyncStorage.setItem(key, value);
+            // Ensure value is a string before saving to AsyncStorage to prevent native crashes
+            const stringValue = typeof value === 'string' ? value : JSON.stringify(value);
+            await AsyncStorage.setItem(key, stringValue);
           }
         }
       } catch (e) {
