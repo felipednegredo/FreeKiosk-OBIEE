@@ -794,7 +794,7 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
         setError(false);
         setLoading(true);
         setPageLoaded(false);
-      }, 5000);
+      }, 10000);
     }
   };
 
@@ -823,7 +823,7 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
         setError(false);
         setLoading(true);
         setPageLoaded(false);
-      }, 5000);
+      }, 10000);
     }
   };
 
@@ -1279,7 +1279,7 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
           <Text style={styles.errorSubtext}>URL: {url}</Text>
           {autoReload && (
             <Text style={styles.helpText}>
-              Automatic reload in 5 seconds...
+              Automatic reload in 10 seconds...
             </Text>
           )}
           <TouchableOpacity style={styles.reloadButton} onPress={handleReload}>
