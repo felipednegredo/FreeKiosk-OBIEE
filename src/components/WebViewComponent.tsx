@@ -99,6 +99,7 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
   const containerViewRef = useRef<View>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<boolean>(false);
+  const [errorDetail, setErrorDetail] = useState<string | null>(null);
   const [pageLoaded, setPageLoaded] = useState<boolean>(false);
 
   // Oracle Analytics Auto Login State
@@ -783,6 +784,7 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
   const handleError = (event: WebViewErrorEvent): void => {
     console.error('[FreeKiosk] WebView error:', event.nativeEvent);
     setError(true);
+    setErrorDetail(event.nativeEvent.description || 'Connection Error');
     setLoading(false);
     
     // Load about:blank to clear the native Android error page
@@ -792,6 +794,7 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
     if (autoReload) {
       setTimeout(() => {
         setError(false);
+        setErrorDetail(null);
         setLoading(true);
         setPageLoaded(false);
       }, 10000);
@@ -814,6 +817,7 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
     // HTTP error code, regardless of autoReload — otherwise the user is stranded
     // with no way back to settings when the page can't load (#180).
     setError(true);
+    setErrorDetail(`Error ${statusCode}`);
     setLoading(false);
     webViewRef.current?.injectJavaScript('window.location.href = "about:blank"; true;');
 
@@ -821,6 +825,7 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
     if (autoReload) {
       setTimeout(() => {
         setError(false);
+        setErrorDetail(null);
         setLoading(true);
         setPageLoaded(false);
       }, 10000);
@@ -848,6 +853,7 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
 
   const handleReload = (): void => {
     setError(false);
+    setErrorDetail(null);
     setLoading(true);
     setPageLoaded(false);
   };
@@ -1275,7 +1281,9 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
       {error && (
         <View style={styles.errorContainer}>
           <Text style={styles.errorIcon}>⚠️</Text>
-          <Text style={styles.errorText}>Loading Error</Text>
+          <Text style={styles.errorText}>
+            {errorDetail || 'Loading Error'}
+          </Text>
           <Text style={styles.errorSubtext}>URL: {url}</Text>
           {autoReload && (
             <Text style={styles.helpText}>
