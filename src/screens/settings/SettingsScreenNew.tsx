@@ -1292,7 +1292,12 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
       let finalUrl = (url || '').trim();
       if (displayMode === 'webview' && !dashboardModeEnabled) {
         const urlLower = finalUrl.toLowerCase();
-        if (urlLower.startsWith('file://') || urlLower.startsWith('javascript:') || urlLower.startsWith('data:')) {
+        if (
+          urlLower.startsWith('file://') ||
+          urlLower.startsWith('javascript:') ||
+          urlLower.startsWith('vbscript:') ||
+          urlLower.startsWith('data:')
+        ) {
           Alert.alert('Security Error', 'This type of URL is not allowed. Use http:// or https://');
           return;
         }
