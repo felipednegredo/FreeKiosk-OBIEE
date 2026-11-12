@@ -6,7 +6,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Colors, Spacing, Typography } from '../../theme';
-import { ScheduledEvent, getDaysDisplayString, formatDateDisplay, isEventActive } from '../../types/planner';
+import { ScheduledEvent, getDaysDisplayString, formatDateDisplay, isEventActive, getEventContentSummary } from '../../types/planner';
 import Icon from '../Icon';
 
 interface ScheduleEventCardProps {
@@ -84,7 +84,7 @@ const ScheduleEventCard: React.FC<ScheduleEventCardProps> = ({
         </Text>
         
         <Text style={[styles.url, !event.enabled && styles.textDisabled]} numberOfLines={1}>
-          {truncateUrl(event.url)}
+          {truncateUrl(getEventContentSummary(event))}
         </Text>
       </TouchableOpacity>
       

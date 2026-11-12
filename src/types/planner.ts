@@ -3,12 +3,23 @@
  * Hybrid scheduling: recurring weekly + one-time dated events
  */
 
+import type { RotationUrl } from './rotation';
+import type { MediaItem } from './mediaPlayer';
+
 export type ScheduleEventType = 'recurring' | 'oneTime';
+
+/**
+ * What a scheduled event puts on screen while it is active:
+ * - 'url'      a single page (the original planner behaviour, and the default)
+ * - 'rotation' several pages shown in turn
+ * - 'media'    a playlist of images/videos
+ */
+export type ScheduleContentType = 'url' | 'rotation' | 'media';
 
 export interface ScheduledEvent {
   id: string;                    // UUID unique
   type: ScheduleEventType;       // 'recurring' or 'oneTime'
-  url: string;                   // URL to display
+  url: string;                   // URL to display (for rotation/media: the first entry, kept for display/back-compat)
   name: string;                  // Event name (e.g., "Lunch Menu", "Christmas Sale")
   enabled: boolean;              // Active/inactive toggle
   priority: number;              // 1=highest (for overlaps)
@@ -22,7 +33,39 @@ export interface ScheduledEvent {
   startDate?: string;            // "YYYY-MM-DD" format
   endDate?: string;              // "YYYY-MM-DD" format (can equal startDate for single day)
   allDay?: boolean;              // If true, ignore time fields
+
+  // Scheduled content (absent => 'url', so events saved by older versions keep working)
+  contentType?: ScheduleContentType;
+  urls?: (string | RotationUrl)[]; // contentType === 'rotation'
+  rotationInterval?: number;       // Seconds per URL for 'rotation' (default: global rotation interval)
+  mediaItems?: MediaItem[];        // contentType === 'media'
 }
+
+export const getEventContentType = (event: Pick<ScheduledEvent, 'contentType'>): ScheduleContentType => {
+  return event.contentType === 'rotation' || event.contentType === 'media' ? event.contentType : 'url';
+};
+
+// One-line description of what an event shows (used by the settings list)
+export const getEventContentSummary = (event: ScheduledEvent): string => {
+  const type = getEventContentType(event);
+  if (type === 'rotation') {
+    const count = event.urls?.length ?? 0;
+    return `${count} link${count === 1 ? '' : 's'} in rotation`;
+  }
+  if (type === 'media') {
+    const count = event.mediaItems?.length ?? 0;
+    return `${count} image${count === 1 ? '' : 's'}/video${count === 1 ? '' : 's'}`;
+  }
+  return event.url;
+};
+
+const pad2 = (n: number): string => n.toString().padStart(2, '0');
+
+// Local calendar date as YYYY-MM-DD. (toISOString() is UTC, which is the wrong day
+// for part of every day in any timezone other than UTC.)
+export const toLocalDateString = (d: Date): string => {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+};
 
 // Helper type for creating new events
 export type NewScheduledEvent = Omit<ScheduledEvent, 'id'>;
@@ -74,13 +117,12 @@ export const isDatePast = (date: string): boolean => {
 };
 
 // Check if event is currently active
-export const isEventActive = (event: ScheduledEvent): boolean => {
+export const isEventActive = (event: ScheduledEvent, now: Date = new Date()): boolean => {
   if (!event.enabled) return false;
   
-  const now = new Date();
   const currentDay = now.getDay();
-  const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-  const currentDate = now.toISOString().split('T')[0];
+  const currentTime = `${pad2(now.getHours())}:${pad2(now.getMinutes())}`;
+  const currentDate = toLocalDateString(now);
   
   if (event.type === 'recurring') {
     if (event.startTime && event.endTime) {
@@ -119,8 +161,8 @@ export const isEventActive = (event: ScheduledEvent): boolean => {
 };
 
 // Get the currently active event with highest priority
-export const getActiveEvent = (events: ScheduledEvent[]): ScheduledEvent | null => {
-  const activeEvents = events.filter(isEventActive);
+export const getActiveEvent = (events: ScheduledEvent[], now: Date = new Date()): ScheduledEvent | null => {
+  const activeEvents = events.filter(event => isEventActive(event, now));
   
   if (activeEvents.length === 0) return null;
   

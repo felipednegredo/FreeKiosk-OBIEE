@@ -1376,6 +1376,8 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
       if (displayMode === 'webview') {
         batchSaves.push([K.URL_ROTATION_ENABLED, urlRotationEnabled]);
         batchSaves.push([K.URL_ROTATION_LIST, urlRotationList || []]);
+      }
+      if (displayMode === 'webview' || displayMode === 'media_player') {
         batchSaves.push([K.URL_PLANNER_ENABLED, urlPlannerEnabled]);
         batchSaves.push([K.URL_PLANNER_EVENTS, urlPlannerEvents || []]);
       }
