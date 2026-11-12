@@ -19,7 +19,7 @@ import AutoBrightnessModule from '../utils/AutoBrightnessModule';
 import { ApiService } from '../utils/ApiService';
 import { mqttClient } from '../utils/MqttModule';
 import DeviceControlService from '../services/DeviceControlService';
-import { ScheduledEvent, getActiveEvent } from '../types/planner';
+import { ScheduledEvent, getActiveEvent, getEventContentType } from '../types/planner';
 import { RotationUrl, getUrlString, getUrlInterval } from '../types/rotation';
 import { DashboardTile } from '../types/dashboard';
 import DashboardGrid from '../components/DashboardGrid';
@@ -144,6 +144,15 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
   const activeScheduledEventRef = useRef<ScheduledEvent | null>(null);
   const urlPlannerTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [baseUrl, setBaseUrl] = useState<string>(''); // Original URL before planner/rotation
+  // What the active planner event shows ('url' | 'rotation' | 'media'), null when none is active
+  const scheduledContentType = activeScheduledEvent ? getEventContentType(activeScheduledEvent) : null;
+  const scheduledMediaItems = scheduledContentType === 'media' ? (activeScheduledEvent?.mediaItems ?? []) : null;
+  // What is actually on screen. Same as displayMode, except while a planner event is
+  // active: its content decides between the WebView and the media player.
+  const renderMode: 'webview' | 'external_app' | 'media_player' =
+    displayMode === 'external_app' || !scheduledContentType
+      ? displayMode
+      : scheduledContentType === 'media' ? 'media_player' : 'webview';
   
   // Screen Sleep Scheduler states
   const [screenSchedulerEnabled, setScreenSchedulerEnabled] = useState<boolean>(false);
@@ -686,6 +695,51 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
             console.error('[API] Error setting motion always-on:', error);
           }
         },
+        onContentChanged: async (kind) => {
+          // The rotation list, media playlist or planner was edited through the REST API
+          // and is already saved: pull the new values into state so the screen updates
+          // right away (no restart, no full loadSettings()).
+          try {
+            if (kind === 'rotation') {
+              const [enabled, list, interval] = await Promise.all([
+                StorageService.getUrlRotationEnabled(),
+                StorageService.getUrlRotationList(),
+                StorageService.getUrlRotationInterval(),
+              ]);
+              setUrlRotationEnabled(enabled);
+              setUrlRotationList(list);
+              setUrlRotationInterval(interval * 1000);
+              setCurrentUrlIndex(0);
+            } else if (kind === 'media') {
+              const [items, autoPlay, loop, shuffle, imageDuration, fitMode, mute] = await Promise.all([
+                StorageService.getMediaPlayerItems(),
+                StorageService.getMediaPlayerAutoPlay(),
+                StorageService.getMediaPlayerLoop(),
+                StorageService.getMediaPlayerShuffle(),
+                StorageService.getMediaPlayerImageDuration(),
+                StorageService.getMediaPlayerFitMode(),
+                StorageService.getMediaPlayerMute(),
+              ]);
+              setMediaPlayerItems(items);
+              setMediaPlayerAutoPlay(autoPlay);
+              setMediaPlayerLoop(loop);
+              setMediaPlayerShuffle(shuffle);
+              setMediaPlayerImageDuration(imageDuration);
+              setMediaPlayerFitMode(fitMode);
+              setMediaPlayerMute(mute);
+            } else if (kind === 'planner') {
+              const [enabled, events] = await Promise.all([
+                StorageService.getUrlPlannerEnabled(),
+                StorageService.getUrlPlannerEvents(),
+              ]);
+              setUrlPlannerEnabled(enabled);
+              setUrlPlannerEvents(events);
+            }
+            console.log('[API] Content updated:', kind);
+          } catch (error) {
+            console.error('[API] Error applying content update:', error);
+          }
+        },
         onSetMode: async (mode: 'webview' | 'external_app' | 'media_player', target?: string) => {
           if (isNavigatingToPinRef.current) {
             console.log('[API] setMode ignored: navigateToPin in progress');
@@ -1045,33 +1099,41 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
       urlRotationTimerRef.current = null;
     }
     
-    // Only enable rotation in webview mode with valid URLs
-    // AND when planner is not active (planner has priority)
-    if (
-      displayMode === 'webview' &&
-      urlRotationEnabled &&
-      !dashboardModeEnabled &&
-      urlRotationList.length >= 2 &&
-      urlRotationInterval >= 5000 &&
-      !activeScheduledEvent // Don't rotate when planner event is active
-    ) {
+    // Which list rotates right now:
+    // - a scheduled 'rotation' event brings its own list (and optional interval);
+    // - otherwise the regular rotation, only in webview mode and only while no
+    //   planner event is active (the planner has priority).
+    const scheduledList = scheduledContentType === 'rotation' ? (activeScheduledEvent?.urls ?? []) : null;
+    const rotationList = scheduledList ?? urlRotationList;
+    const rotationInterval = scheduledList && activeScheduledEvent?.rotationInterval
+      ? Math.max(5, activeScheduledEvent.rotationInterval) * 1000
+      : urlRotationInterval;
+    const rotationActive = scheduledList
+      ? scheduledList.length >= 2
+      : displayMode === 'webview' &&
+        urlRotationEnabled &&
+        !dashboardModeEnabled &&
+        urlRotationList.length >= 2 &&
+        !activeScheduledEvent;
+
+    if (rotationActive && rotationInterval >= 5000) {
+      // The list may have just been shortened remotely
+      const index = currentUrlIndex < rotationList.length ? currentUrlIndex : 0;
+
       // Set initial URL to first in list
-      if (urlRotationList.length > 0 && currentUrlIndex === 0) {
-        setUrl(getUrlString(urlRotationList[0]));
+      if (index === 0) {
+        setUrl(getUrlString(rotationList[0]));
       }
       
       // Schedule rotation for the NEXT URL
       const rotate = () => {
-        setCurrentUrlIndex(prevIndex => {
-          const nextIndex = (prevIndex + 1) % urlRotationList.length;
-          setUrl(getUrlString(urlRotationList[nextIndex]));
-          return nextIndex;
-        });
+        const nextIndex = (index + 1) % rotationList.length;
+        setCurrentUrlIndex(nextIndex);
+        setUrl(getUrlString(rotationList[nextIndex]));
       };
 
       // Delay is based on the CURRENT URL's interval
-      const currentItem = urlRotationList[currentUrlIndex];
-      const delay = getUrlInterval(currentItem, urlRotationInterval);
+      const delay = getUrlInterval(rotationList[index], rotationInterval);
 
       urlRotationTimerRef.current = setTimeout(rotate, delay);
     }
@@ -1082,7 +1144,7 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
         urlRotationTimerRef.current = null;
       }
     };
-  }, [displayMode, urlRotationEnabled, dashboardModeEnabled, urlRotationList, urlRotationInterval, activeScheduledEvent, currentUrlIndex]);
+  }, [displayMode, urlRotationEnabled, dashboardModeEnabled, urlRotationList, urlRotationInterval, activeScheduledEvent, scheduledContentType, currentUrlIndex]);
 
   // URL Planner effect - checks every minute for scheduled events
   useEffect(() => {
@@ -1092,8 +1154,32 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
       urlPlannerTimerRef.current = null;
     }
     
-    if (displayMode !== 'webview' || !urlPlannerEnabled || urlPlannerEvents.length === 0) {
+    // Back to the regular content once no event is active any more. Remounts the
+    // WebView to kill the event's session (its audio/JS would otherwise keep running).
+    const endActiveEvent = () => {
+      if (!activeScheduledEventRef.current) return;
+      activeScheduledEventRef.current = null;
       setActiveScheduledEvent(null);
+      setCurrentUrlIndex(0);
+      if (dashboardModeEnabled) {
+        setDashboardShowGrid(true);
+      } else if (urlRotationEnabled && urlRotationList.length >= 2) {
+        // Regular rotation takes over, from its first URL
+        setUrl(getUrlString(urlRotationList[0]));
+        setWebViewKey(k => k + 1);
+      } else {
+        setUrl(baseUrl);
+        setWebViewKey(k => k + 1);
+      }
+    };
+
+    // The planner runs in webview and media player modes: an event can show a page,
+    // a rotation of pages or a media playlist regardless of which of the two is the
+    // regular mode (see renderMode).
+    if (displayMode === 'external_app' || !urlPlannerEnabled || urlPlannerEvents.length === 0) {
+      // Also reached when the planner is switched off (or emptied) remotely while an
+      // event is on screen.
+      endActiveEvent();
       return;
     }
     
@@ -1102,28 +1188,25 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
       const activeEvent = getActiveEvent(urlPlannerEvents);
       const prevEvent = activeScheduledEventRef.current;
 
-      if (activeEvent && activeEvent.id !== prevEvent?.id) {
+      // "Changed" also covers the same event edited while it is on screen (e.g. its
+      // URL replaced through the REST API). Compared by value: loadSettings() re-parses
+      // the events on every focus and must not cause a reload.
+      if (activeEvent && (activeEvent.id !== prevEvent?.id || JSON.stringify(activeEvent) !== JSON.stringify(prevEvent))) {
         // New active event found — remount WebView to kill the previous session
         // (audio/JS from the old page would otherwise continue running in the background)
         activeScheduledEventRef.current = activeEvent;
         setActiveScheduledEvent(activeEvent);
-        setUrl(activeEvent.url);
-        setWebViewKey(k => k + 1);
+        setCurrentUrlIndex(0);
+        if (getEventContentType(activeEvent) !== 'media') {
+          setUrl(activeEvent.url);
+          setWebViewKey(k => k + 1);
+        }
         // In dashboard mode, switch from grid to webview for planner
         if (dashboardModeEnabled) {
           setDashboardShowGrid(false);
         }
       } else if (!activeEvent && prevEvent) {
-        // No active event, but there was one before — remount WebView to kill the session
-        activeScheduledEventRef.current = null;
-        setActiveScheduledEvent(null);
-        if (dashboardModeEnabled) {
-          setDashboardShowGrid(true);
-        } else if (!urlRotationEnabled || urlRotationList.length < 2) {
-          // Restore base URL or let rotation take over
-          setUrl(baseUrl);
-          setWebViewKey(k => k + 1);
-        }
+        endActiveEvent();
       }
     };
     
@@ -1139,7 +1222,7 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
         urlPlannerTimerRef.current = null;
       }
     };
-  }, [displayMode, urlPlannerEnabled, urlPlannerEvents, baseUrl, urlRotationEnabled, urlRotationList.length, dashboardModeEnabled]);
+  }, [displayMode, urlPlannerEnabled, urlPlannerEvents, baseUrl, urlRotationEnabled, urlRotationList, dashboardModeEnabled]);
 
   // ==================== Screen Sleep Scheduler ====================
   // Strategy:
@@ -1761,8 +1844,9 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
       const savedOracleAutoLogin = bool(K.ORACLE_AUTO_LOGIN_ENABLED, false);
       setOracleAutoLoginEnabled(savedOracleAutoLogin);
 
-      // Load Media Player settings
-      if (savedDisplayMode === 'media_player') {
+      // Load Media Player settings (in every mode but external_app: a planner event
+      // can show a media playlist while the regular mode is webview)
+      if (savedDisplayMode !== 'external_app') {
         const mpItems = jsonParse(K.MEDIA_PLAYER_ITEMS, []) as MediaItem[];
         const mpAutoPlay = bool(K.MEDIA_PLAYER_AUTOPLAY, true);
         const mpLoop = bool(K.MEDIA_PLAYER_LOOP, true);
@@ -2593,7 +2677,7 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
-      {displayMode === 'webview' ? (
+      {renderMode === 'webview' ? (
         <>
           {(statusBarEnabled || dashboardModeEnabled) && (
             <StatusBar
@@ -2668,7 +2752,7 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
             />
           )}
         </>
-      ) : displayMode === 'media_player' ? (
+      ) : renderMode === 'media_player' ? (
         <>
           {statusBarEnabled && (
             <StatusBar
@@ -2681,7 +2765,8 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
             />
           )}
           <MediaPlayerComponent
-            items={mediaPlayerItems}
+            key={scheduledMediaItems ? `scheduled_${activeScheduledEvent?.id}` : 'playlist'}
+            items={scheduledMediaItems ?? mediaPlayerItems}
             autoPlay={mediaPlayerAutoPlay}
             loop={mediaPlayerLoop}
             shuffle={mediaPlayerShuffle}

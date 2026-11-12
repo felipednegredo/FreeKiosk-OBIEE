@@ -62,6 +62,7 @@ class HttpServerModule(private val reactContext: ReactApplicationContext) :
     companion object {
         private const val TAG = "HttpServerModule"
         private const val NAME = "HttpServerModule"
+        private const val AWAITED_COMMAND_TIMEOUT_MS = 8000L
     }
 
     private var server: KioskHttpServer? = null
@@ -1007,6 +1008,13 @@ class HttpServerModule(private val reactContext: ReactApplicationContext) :
             "getLocation" -> {
                 return getLocationInfo()
             }
+            // Content editing (rotation list, media playlist, planner): validated and
+            // stored by the JS side, so wait for its reply instead of answering blindly.
+            "setRotation",
+            "getMedia", "setMedia", "mediaAdd", "mediaRemove",
+            "getPlanner", "setPlanner", "plannerUpsertEvent", "plannerDeleteEvent" -> {
+                return handleAwaitedCommand(command, params)
+            }
         }
         
         // Send other commands to JS side
@@ -1018,6 +1026,59 @@ class HttpServerModule(private val reactContext: ReactApplicationContext) :
         return JSONObject().apply {
             put("executed", true)
             put("command", command)
+        }
+    }
+
+    // ==================== Commands answered by JS ====================
+
+    private class PendingCommand {
+        val latch = java.util.concurrent.CountDownLatch(1)
+        @Volatile var reply: String? = null
+    }
+
+    private val pendingCommands = java.util.concurrent.ConcurrentHashMap<String, PendingCommand>()
+
+    /**
+     * Send a command to JS and block the (per-request) HTTP thread until JS replies
+     * through resolveCommand(). The reply is {ok: true, data: {...}} or
+     * {ok: false, error: "..."}; a timeout is reported with unavailable = true.
+     */
+    private fun handleAwaitedCommand(command: String, params: JSONObject?): JSONObject {
+        val requestId = java.util.UUID.randomUUID().toString()
+        val pending = PendingCommand()
+        pendingCommands[requestId] = pending
+        try {
+            sendEvent("onApiCommand", Arguments.createMap().apply {
+                putString("command", command)
+                putString("params", params?.toString() ?: "{}")
+                putString("requestId", requestId)
+            })
+            if (!pending.latch.await(AWAITED_COMMAND_TIMEOUT_MS, java.util.concurrent.TimeUnit.MILLISECONDS)) {
+                Log.w(TAG, "Command $command timed out waiting for JS")
+                return JSONObject().apply {
+                    put("ok", false)
+                    put("unavailable", true)
+                    put("error", "The app did not answer in time. Is FreeKiosk running in the foreground?")
+                }
+            }
+            return JSONObject(pending.reply ?: "{}")
+        } catch (e: Exception) {
+            Log.e(TAG, "Command $command failed: ${e.message}")
+            return JSONObject().apply {
+                put("ok", false)
+                put("unavailable", true)
+                put("error", "Command failed: ${e.message}")
+            }
+        } finally {
+            pendingCommands.remove(requestId)
+        }
+    }
+
+    @ReactMethod
+    fun resolveCommand(requestId: String, replyJson: String) {
+        pendingCommands[requestId]?.let { pending ->
+            pending.reply = replyJson
+            pending.latch.countDown()
         }
     }
 

@@ -12,6 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- 📺 **Edit the on-screen content remotely through the REST API**: the URL rotation list (`POST /api/rotation`), the Media Player playlist (`GET|POST /api/media`, `POST /api/media/add`, `POST /api/media/remove`) and the planner (`GET|POST /api/planner`, `POST /api/planner/event`, `POST /api/planner/event/delete`) can now be read and changed without touching the device. Edits are validated, persisted and applied on screen immediately, and the response carries the resulting state; an invalid request changes nothing and returns `400` with the offending field. See `docs/rest-api.md` → *Remote Content*.
+- 🗓️ **Planner events can show more than a single URL**: a scheduled event can now be a single page, a **rotation of pages** (with its own interval) or a **playlist of images/videos**, and the planner now also runs in Media Player mode. Outside scheduled times the regular content is shown. The event editors in Settings (renamed *Content Planner*) got a "What to show" selector; events saved by earlier versions keep working unchanged.
+
+### Fixed
+- 🕛 **One-time planner events started/ended at the wrong time of day outside UTC**: the current date was taken in UTC while the time was local, so e.g. in UTC-3 an event for a given date stopped at 21:00 and the next day's started then. The local date is now used (also for the "today" default in the one-time event editor).
+- 🔁 **Planner**: turning the planner off while an event was on screen left the event's URL showing, and editing the active event's URL had no effect until the event restarted.
+
 ## [1.2.20-beta.5] - 2026-07-21
 
 ### Fixed

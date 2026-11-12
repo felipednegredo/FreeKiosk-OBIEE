@@ -16,7 +16,9 @@ import {
   Platform,
 } from 'react-native';
 import { Colors, Spacing, Typography } from '../../theme';
-import { ScheduledEvent, generateEventId, isValidTime, PRIORITY_LEVELS } from '../../types/planner';
+import { ScheduledEvent, ScheduleContentType, getEventContentType, isValidTime, PRIORITY_LEVELS } from '../../types/planner';
+import { sanitizePlannerEvent, eventContentToText, buildEventContentInput } from '../../utils/remoteContent';
+import EventContentEditor from './EventContentEditor';
 import { SettingsInput } from './index';
 import DaySelector from './DaySelector';
 import TimeInput from './TimeInput';
@@ -37,7 +39,9 @@ const RecurringEventEditor: React.FC<RecurringEventEditorProps> = ({
   existingEvents,
 }) => {
   const [name, setName] = useState('');
-  const [url, setUrl] = useState('');
+  const [contentType, setContentType] = useState<ScheduleContentType>('url');
+  const [contentText, setContentText] = useState(''); // one URL per line
+  const [contentSeconds, setContentSeconds] = useState('');
   const [days, setDays] = useState<number[]>([1, 2, 3, 4, 5]); // Default weekdays
   const [startTime, setStartTime] = useState('09:00');
   const [endTime, setEndTime] = useState('17:00');
@@ -50,7 +54,11 @@ const RecurringEventEditor: React.FC<RecurringEventEditorProps> = ({
       if (event) {
         // Editing existing event
         setName(event.name);
-        setUrl(event.url);
+        setContentType(getEventContentType(event));
+        setContentText(eventContentToText(event));
+        setContentSeconds(String(
+          (event.contentType === 'media' ? event.mediaItems?.[0]?.duration : event.rotationInterval) ?? '',
+        ));
         setDays(event.days || [1, 2, 3, 4, 5]);
         setStartTime(event.startTime || '09:00');
         setEndTime(event.endTime || '17:00');
@@ -59,7 +67,9 @@ const RecurringEventEditor: React.FC<RecurringEventEditorProps> = ({
       } else {
         // New event - reset to defaults
         setName('');
-        setUrl('');
+        setContentType('url');
+        setContentText('');
+        setContentSeconds('');
         setDays([1, 2, 3, 4, 5]);
         setStartTime('09:00');
         setEndTime('17:00');
@@ -69,20 +79,12 @@ const RecurringEventEditor: React.FC<RecurringEventEditorProps> = ({
     }
   }, [visible, event]);
 
-  const normalizeUrl = (input: string): string => {
-    let normalized = input.trim();
-    if (normalized && !normalized.match(/^https?:\/\//i)) {
-      normalized = 'https://' + normalized;
-    }
-    return normalized;
-  };
-
   const validate = (): string | null => {
     if (!name.trim()) {
       return 'Please enter an event name';
     }
-    if (!url.trim()) {
-      return 'Please enter a URL';
+    if (!contentText.trim()) {
+      return contentType === 'url' ? 'Please enter a URL' : 'Please enter at least one URL (one per line)';
     }
     if (days.length === 0) {
       return 'Please select at least one day';
@@ -106,21 +108,24 @@ const RecurringEventEditor: React.FC<RecurringEventEditorProps> = ({
       return;
     }
 
-    const normalizedUrl = normalizeUrl(url);
-    
-    const savedEvent: ScheduledEvent = {
-      id: event?.id || generateEventId(),
+    // Same validation/normalization as events created through the REST API
+    const result = sanitizePlannerEvent({
+      id: event?.id,
       type: 'recurring',
       name: name.trim(),
-      url: normalizedUrl,
       days,
       startTime,
       endTime,
       priority,
       enabled,
-    };
+      ...buildEventContentInput(contentType, contentText, contentSeconds),
+    });
+    if (!result.ok) {
+      Alert.alert('Validation Error', result.error);
+      return;
+    }
 
-    onSave(savedEvent);
+    onSave(result.value);
   };
 
   return (
@@ -159,12 +164,13 @@ const RecurringEventEditor: React.FC<RecurringEventEditorProps> = ({
 
             <View style={styles.spacer} />
 
-            <SettingsInput
-              label="URL to Display"
-              value={url}
-              onChangeText={setUrl}
-              placeholder="https://example.com/menu"
-              keyboardType="url"
+            <EventContentEditor
+              contentType={contentType}
+              onContentTypeChange={setContentType}
+              text={contentText}
+              onTextChange={setContentText}
+              seconds={contentSeconds}
+              onSecondsChange={setContentSeconds}
             />
           </View>
 

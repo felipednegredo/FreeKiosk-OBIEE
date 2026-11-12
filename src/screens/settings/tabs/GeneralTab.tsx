@@ -96,7 +96,7 @@ interface GeneralTabProps {
   urlRotationInterval: string;
   onUrlRotationIntervalChange: (value: string) => void;
   
-  // URL Planner (webview only)
+  // Content Planner (webview and media player modes)
   urlPlannerEnabled: boolean;
   onUrlPlannerEnabledChange: (value: boolean) => void;
   urlPlannerEvents: ScheduledEvent[];
@@ -671,14 +671,14 @@ const GeneralTab: React.FC<GeneralTabProps> = ({
         </SettingsSection>
       )}
       
-      {/* URL Planner (WebView mode only) */}
-      {displayMode === 'webview' && (
-        <SettingsSection title="URL Planner" icon="calendar-clock">
+      {/* Planner: scheduled content (WebView and Media Player modes) */}
+      {(displayMode === 'webview' || displayMode === 'media_player') && (
+        <SettingsSection title="Content Planner" icon="calendar-clock">
           <SettingsSwitch
-            label="Enable Scheduled URLs"
+            label="Enable Scheduled Content"
             value={urlPlannerEnabled}
             onValueChange={onUrlPlannerEnabledChange}
-            hint="Display specific URLs at scheduled times"
+            hint="Show a page, a rotation of pages or an image/video playlist at scheduled times"
           />
           
           {urlPlannerEnabled && (
@@ -687,7 +687,9 @@ const GeneralTab: React.FC<GeneralTabProps> = ({
                 <Text style={styles.infoText}>
                   📌 Scheduled events take priority over URL Rotation.{`
 `}
-                  One-time events take priority over recurring events.
+                  One-time events take priority over recurring events.{`
+`}
+                  Outside scheduled times the regular content is shown. Events can also be managed remotely through the REST API (/api/planner).
                 </Text>
               </SettingsInfoBox>
               

@@ -599,6 +599,142 @@ Lock device screen. Uses `DevicePolicyManager.lockNow()` (Device Owner) or `GLOB
 Restart the FreeKiosk app UI. Calls `activity.recreate()` to fully restart the React Native activity without rebooting the device. Useful for troubleshooting UI issues remotely.
 
 
+### Remote Content: links, images and schedule 📺
+
+Change what the screen shows without touching the device: the list of pages in rotation, the image/video playlist, and a schedule that puts different content on screen at different times.
+
+- `GET` reads. `POST` with a JSON body edits (requires **Allow remote control**).
+- Every edit is validated, saved (it survives a restart, and shows up in Settings) and applied on screen immediately. The response contains the resulting state.
+- An invalid request changes nothing and returns `400` with a message naming the offending field, e.g. `"events[1]: startTime and endTime are required in HH:MM format"`.
+- Page URLs must be `http://` or `https://` (`example.com/x` becomes `https://example.com/x`). Media URLs may also be `file://` / `content://` files already on the device.
+- These endpoints need the FreeKiosk screen to be running; otherwise they answer `503`.
+
+#### `GET /api/rotation`
+Current URL rotation: `{ "enabled", "urls", "interval", "currentIndex" }`.
+
+#### `POST /api/rotation`
+Edit the URL rotation (WebView mode). All fields are optional; send only what you want to change.
+```json
+{
+  "urls": [
+    "https://example.com/dashboard",
+    { "url": "https://example.com/sales", "interval": 60 }
+  ],
+  "interval": 30,
+  "enabled": true
+}
+```
+| Field | Description |
+|-------|-------------|
+| `urls` | Replaces the whole list. Each entry is a URL, or `{ "url", "interval" }` to give that page its own duration in seconds |
+| `interval` | Default seconds per page (minimum 5) |
+| `enabled` | Start/stop rotating (same as `/api/rotation/start` and `/stop`). Rotation needs at least 2 URLs |
+
+#### `GET /api/media`
+The Media Player playlist and its settings:
+```json
+{
+  "items": [
+    { "id": "media_1700000000000_ab12cd3", "url": "https://example.com/banner.jpg", "type": "image", "duration": 15 }
+  ],
+  "autoPlay": true, "loop": true, "shuffle": false,
+  "imageDuration": 10, "fitMode": "contain", "muteVideo": false,
+  "displayMode": "media_player"
+}
+```
+The playlist is on screen when `displayMode` is `media_player` (switch with [`POST /api/mode`](#post-apimode)).
+
+#### `POST /api/media`
+Replace the playlist and/or change its settings. All fields are optional.
+```json
+{
+  "items": [
+    "https://example.com/banner.jpg",
+    { "url": "https://example.com/promo.mp4", "title": "Promo" },
+    { "url": "https://example.com/menu", "type": "image", "duration": 20 }
+  ],
+  "imageDuration": 10,
+  "shuffle": false
+}
+```
+| Field | Description |
+|-------|-------------|
+| `items` | Replaces the whole playlist. Each entry is a URL or `{ "url", "type"?, "title"?, "duration"? }` |
+| `items[].type` | `image` or `video`. Detected from the file extension when omitted (anything that is not a known video extension is an image) |
+| `items[].duration` | Seconds this image stays on screen (videos play to the end) |
+| `imageDuration` | Default seconds per image |
+| `loop`, `shuffle`, `autoPlay`, `muteVideo` | `true` / `false` |
+| `fitMode` | `contain`, `cover` or `fill` |
+
+#### `POST /api/media/add`
+Append to the playlist: one item (`{ "url": "https://example.com/new.jpg", "duration": 12 }`) or several (`{ "items": [ ... ] }`). The response lists the `added` items with their `id`.
+
+#### `POST /api/media/remove`
+Remove an item by `{ "id": "..." }` (from `GET /api/media`) or by `{ "url": "..." }`.
+
+#### `GET /api/planner`
+The schedule: `{ "enabled", "events": [ ... ], "activeEventId" }`. `activeEventId` is the event on screen right now (`null` when the regular content is showing).
+
+#### `POST /api/planner/event`
+Add a scheduled event, or update one: when `id` matches an existing event, only the fields you send change.
+
+An event says **when** and **what**. Outside every event the regular content is shown (the URL / rotation / playlist of the current display mode). The planner works in WebView and Media Player modes and must be enabled (`POST /api/planner` with `{ "enabled": true }`).
+
+**When** — every week:
+```json
+{ "name": "Lunch menu", "days": [1, 2, 3, 4, 5], "startTime": "11:30", "endTime": "14:00", "url": "https://example.com/menu" }
+```
+**When** — specific dates:
+```json
+{ "name": "Black Friday", "startDate": "2026-11-27", "endDate": "2026-11-29", "media": ["https://example.com/bf1.jpg", "https://example.com/bf2.jpg"] }
+```
+
+| Field | Description |
+|-------|-------------|
+| `id` | Optional. Choose your own (e.g. `"lunch"`) to update the event later; generated when omitted |
+| `name` | Required |
+| `days` | Weekly events: weekdays, `0` = Sunday … `6` = Saturday (also `"mon"`, `"seg"`, …) |
+| `startTime`, `endTime` | `HH:MM`, 24 h, device local time. The end is exclusive. Weekly events may cross midnight (`22:00` → `06:00`) |
+| `startDate`, `endDate` | Dated events: `YYYY-MM-DD` (`endDate` defaults to `startDate`). All day unless `startTime`/`endTime` are given, in which case the event runs in that window on each day |
+| `enabled` | Default `true`. `{ "id": "lunch", "enabled": false }` pauses an event |
+| `priority` | `1` (highest) to `5`, default `3`. Decides which event wins when several overlap; on a tie a dated event beats a weekly one |
+
+**What** — one of:
+
+| Field | Shows |
+|-------|-------|
+| `url` | A single page |
+| `urls` (+ optional `rotationInterval`, seconds) | Several pages in rotation. Same format as `/api/rotation` |
+| `media` | A playlist of images/videos. Same format as `items` in `/api/media`; uses the Media Player settings (fit mode, default image duration, …) |
+
+The response contains the stored `event` (with its `id`), `created`, and the full schedule.
+
+#### `POST /api/planner/event/delete`
+```json
+{ "id": "lunch" }
+```
+
+#### `POST /api/planner`
+Turn the planner on/off and/or replace the whole schedule in one call:
+```json
+{
+  "enabled": true,
+  "events": [
+    { "id": "morning", "name": "Morning", "days": [1,2,3,4,5], "startTime": "08:00", "endTime": "12:00", "urls": ["https://example.com/a", "https://example.com/b"], "rotationInterval": 20 },
+    { "id": "afternoon", "name": "Afternoon", "days": [1,2,3,4,5], "startTime": "12:00", "endTime": "18:00", "media": ["https://example.com/1.jpg", "https://example.com/2.jpg"] }
+  ]
+}
+```
+`events` replaces every existing event (send `[]` to clear the schedule).
+
+**cURL example:**
+```bash
+curl -X POST http://TABLET_IP:8080/api/planner/event \
+  -H "Content-Type: application/json" -H "X-Api-Key: your-api-key" \
+  -d '{"id":"lunch","name":"Lunch menu","days":[1,2,3,4,5],"startTime":"11:30","endTime":"14:00","url":"https://example.com/menu"}'
+```
+
+
 ### Audio Control (POST)
 
 #### `POST /api/audio/play`
@@ -1122,7 +1258,9 @@ curl http://TABLET_IP:8080/api/location
 Common errors:
 - `401 Unauthorized` - Invalid or missing API key
 - `403 Forbidden` - Control commands disabled
+- `400 Bad Request` - Invalid request body (the message says what is wrong)
 - `404 Not Found` - Unknown endpoint
+- `503 Service Unavailable` - The app could not answer (content endpoints need the FreeKiosk screen running)
 - `500 Internal Error` - Server error
 
 

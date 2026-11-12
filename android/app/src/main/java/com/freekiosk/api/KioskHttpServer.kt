@@ -60,7 +60,9 @@ class KioskHttpServer(
         val postOnlyUris = setOf(
             "/api/url", "/api/navigate", "/api/tts", "/api/toast",
             "/api/app/launch", "/api/js", "/api/audio/play", "/api/remote/text",
-            "/api/mode"
+            "/api/mode",
+            "/api/planner/event", "/api/planner/event/delete",
+            "/api/media/add", "/api/media/remove"
         )
 
         val response = try {
@@ -72,7 +74,6 @@ class KioskHttpServer(
                 isGetOrPost && uri == "/api/wifi" -> handleGetWifi()
                 isGetOrPost && uri == "/api/info" -> handleGetInfo()
                 isGetOrPost && uri == "/api/health" -> handleHealth()
-                isGetOrPost && uri == "/api/rotation" -> handleGetRotation()
                 isGetOrPost && uri == "/api/sensors" -> handleGetSensors()
                 isGetOrPost && uri == "/api/storage" -> handleGetStorage()
                 isGetOrPost && uri == "/api/memory" -> handleGetMemory()
@@ -88,6 +89,15 @@ class KioskHttpServer(
                 isGetOrPost && uri == "/api/volume" -> {
                     if (method == Method.POST) handleSetVolume(session) else handleGetVolume()
                 }
+
+                // Content: GET reads; POST with a JSON body replaces/edits it
+                isGetOrPost && uri == "/api/rotation" -> handleContent(session, null, "setRotation")
+                isGetOrPost && uri == "/api/media" -> handleContent(session, "getMedia", "setMedia")
+                isGetOrPost && uri == "/api/planner" -> handleContent(session, "getPlanner", "setPlanner")
+                method == Method.POST && uri == "/api/media/add" -> handleContentEdit(session, "mediaAdd")
+                method == Method.POST && uri == "/api/media/remove" -> handleContentEdit(session, "mediaRemove")
+                method == Method.POST && uri == "/api/planner/event" -> handleContentEdit(session, "plannerUpsertEvent")
+                method == Method.POST && uri == "/api/planner/event/delete" -> handleContentEdit(session, "plannerDeleteEvent")
 
                 // Camera photo: GET or POST (query params drive behavior)
                 isGetOrPost && uri == "/api/camera/photo" -> handleCameraPhoto(session)
@@ -167,7 +177,9 @@ class KioskHttpServer(
                     put("/api/screen - Screen state")
                     put("/api/wifi - WiFi info")
                     put("/api/info - Device info")
-                    put("/api/rotation - URL rotation status")
+                    put("/api/rotation - URL rotation status and list")
+                    put("/api/media - Media playlist (images/videos) and its settings")
+                    put("/api/planner - Scheduled content: events and the one active now")
                     put("/api/sensors - Device sensors (light, proximity)")
                     put("/api/storage - Storage info")
                     put("/api/memory - Memory info")
@@ -189,6 +201,13 @@ class KioskHttpServer(
                     put("/api/js - Execute JavaScript {code: string}")
                     put("/api/audio/play - Play audio {url: string, loop: bool, volume: 0-100}")
                     put("/api/remote/text - Type text {text: string}")
+                    put("/api/rotation - Edit URL rotation {urls?: [url | {url, interval}], interval?, enabled?}")
+                    put("/api/media - Replace media playlist {items?: [url | {url, type?, title?, duration?}], imageDuration?, loop?, shuffle?, fitMode?, muteVideo?}")
+                    put("/api/media/add - Append media {url, type?, title?, duration?} or {items: [...]}")
+                    put("/api/media/remove - Remove media {id} or {url}")
+                    put("/api/planner - Replace schedule {enabled?, events?: [...]}")
+                    put("/api/planner/event - Add or update one scheduled event (update when id matches)")
+                    put("/api/planner/event/delete - Delete a scheduled event {id}")
                 })
                 put("GET or POST", JSONArray().apply {
                     put("/api/screen/on - Turn screen on")
@@ -416,6 +435,73 @@ class KioskHttpServer(
             put("currentIndex", 0)
         }
         return jsonSuccess(rotation)
+    }
+
+    // ==================== Content Editing (rotation / media / planner) ====================
+
+    /**
+     * GET, or POST without a body, reads; POST with a JSON body edits.
+     * [readCommand] null means the read is served from the status snapshot (rotation).
+     */
+    private fun handleContent(session: IHTTPSession, readCommand: String?, writeCommand: String): Response {
+        if (session.method == Method.POST) {
+            val body = try {
+                readJsonBody(session)
+            } catch (e: IllegalArgumentException) {
+                return jsonError(Response.Status.BAD_REQUEST, e.message ?: "Invalid JSON body")
+            }
+            if (body != null && body.length() > 0) {
+                checkControlAllowed()?.let { return it }
+                return contentReply(commandHandler(writeCommand, body))
+            }
+        }
+        return if (readCommand == null) handleGetRotation() else contentReply(commandHandler(readCommand, null))
+    }
+
+    private fun handleContentEdit(session: IHTTPSession, command: String): Response {
+        checkControlAllowed()?.let { return it }
+        val body = try {
+            readJsonBody(session)
+        } catch (e: IllegalArgumentException) {
+            return jsonError(Response.Status.BAD_REQUEST, e.message ?: "Invalid JSON body")
+        }
+        if (body == null || body.length() == 0) {
+            return jsonError(Response.Status.BAD_REQUEST, "A JSON body is required")
+        }
+        return contentReply(commandHandler(command, body))
+    }
+
+    /** Map the JS reply ({ok, data} or {ok: false, error}) to an HTTP response. */
+    private fun contentReply(reply: JSONObject): Response {
+        if (reply.optBoolean("ok", false)) {
+            return jsonSuccess(reply.optJSONObject("data") ?: JSONObject())
+        }
+        val status = if (reply.optBoolean("unavailable", false)) Response.Status.SERVICE_UNAVAILABLE else Response.Status.BAD_REQUEST
+        return jsonError(status, reply.optString("error", "Request failed"))
+    }
+
+    /** JSON object body, or null when there is none. Throws when it is not valid JSON. */
+    private fun readJsonBody(session: IHTTPSession): JSONObject? {
+        val files = mutableMapOf<String, String>()
+        try {
+            // NanoHTTPD decodes the body as US-ASCII unless the Content-Type names a
+            // charset, which would turn accented characters (event names, titles) into
+            // "?". JSON is UTF-8, so default to that.
+            val contentType = session.headers["content-type"]
+            if (contentType == null || !contentType.contains("charset", ignoreCase = true)) {
+                session.headers["content-type"] = (contentType ?: MIME_JSON) + "; charset=UTF-8"
+            }
+            session.parseBody(files)
+        } catch (e: Exception) {
+            throw IllegalArgumentException("Could not read request body")
+        }
+        val postData = files["postData"]
+        if (postData.isNullOrBlank()) return null
+        return try {
+            JSONObject(postData)
+        } catch (e: Exception) {
+            throw IllegalArgumentException("Body must be a JSON object")
+        }
     }
 
     private fun handleRotationStart(): Response {

@@ -16,7 +16,9 @@ import {
   Platform,
 } from 'react-native';
 import { Colors, Spacing, Typography } from '../../theme';
-import { ScheduledEvent, generateEventId, isValidTime, isValidDate, PRIORITY_LEVELS } from '../../types/planner';
+import { ScheduledEvent, ScheduleContentType, getEventContentType, isValidTime, isValidDate, toLocalDateString, PRIORITY_LEVELS } from '../../types/planner';
+import { sanitizePlannerEvent, eventContentToText, buildEventContentInput } from '../../utils/remoteContent';
+import EventContentEditor from './EventContentEditor';
 import { SettingsInput, SettingsSwitch } from './index';
 import DateInput from './DateInput';
 import TimeInput from './TimeInput';
@@ -37,7 +39,9 @@ const OneTimeEventEditor: React.FC<OneTimeEventEditorProps> = ({
   existingEvents,
 }) => {
   const [name, setName] = useState('');
-  const [url, setUrl] = useState('');
+  const [contentType, setContentType] = useState<ScheduleContentType>('url');
+  const [contentText, setContentText] = useState(''); // one URL per line
+  const [contentSeconds, setContentSeconds] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [allDay, setAllDay] = useState(true);
@@ -48,7 +52,7 @@ const OneTimeEventEditor: React.FC<OneTimeEventEditorProps> = ({
 
   // Get today's date in YYYY-MM-DD format
   const getTodayDate = (): string => {
-    return new Date().toISOString().split('T')[0];
+    return toLocalDateString(new Date());
   };
 
   // Reset form when modal opens
@@ -57,7 +61,11 @@ const OneTimeEventEditor: React.FC<OneTimeEventEditorProps> = ({
       if (event) {
         // Editing existing event
         setName(event.name);
-        setUrl(event.url);
+        setContentType(getEventContentType(event));
+        setContentText(eventContentToText(event));
+        setContentSeconds(String(
+          (event.contentType === 'media' ? event.mediaItems?.[0]?.duration : event.rotationInterval) ?? '',
+        ));
         setStartDate(event.startDate || getTodayDate());
         setEndDate(event.endDate || event.startDate || getTodayDate());
         setAllDay(event.allDay ?? true);
@@ -69,7 +77,9 @@ const OneTimeEventEditor: React.FC<OneTimeEventEditorProps> = ({
         // New event - reset to defaults
         const today = getTodayDate();
         setName('');
-        setUrl('');
+        setContentType('url');
+        setContentText('');
+        setContentSeconds('');
         setStartDate(today);
         setEndDate(today);
         setAllDay(true);
@@ -81,20 +91,12 @@ const OneTimeEventEditor: React.FC<OneTimeEventEditorProps> = ({
     }
   }, [visible, event]);
 
-  const normalizeUrl = (input: string): string => {
-    let normalized = input.trim();
-    if (normalized && !normalized.match(/^https?:\/\//i)) {
-      normalized = 'https://' + normalized;
-    }
-    return normalized;
-  };
-
   const validate = (): string | null => {
     if (!name.trim()) {
       return 'Please enter an event name';
     }
-    if (!url.trim()) {
-      return 'Please enter a URL';
+    if (!contentText.trim()) {
+      return contentType === 'url' ? 'Please enter a URL' : 'Please enter at least one URL (one per line)';
     }
     if (!isValidDate(startDate)) {
       return 'Please enter a valid start date (YYYY-MM-DD)';
@@ -126,13 +128,11 @@ const OneTimeEventEditor: React.FC<OneTimeEventEditorProps> = ({
       return;
     }
 
-    const normalizedUrl = normalizeUrl(url);
-    
-    const savedEvent: ScheduledEvent = {
-      id: event?.id || generateEventId(),
+    // Same validation/normalization as events created through the REST API
+    const result = sanitizePlannerEvent({
+      id: event?.id,
       type: 'oneTime',
       name: name.trim(),
-      url: normalizedUrl,
       startDate,
       endDate,
       allDay,
@@ -140,9 +140,14 @@ const OneTimeEventEditor: React.FC<OneTimeEventEditorProps> = ({
       endTime: allDay ? undefined : endTime,
       priority,
       enabled,
-    };
+      ...buildEventContentInput(contentType, contentText, contentSeconds),
+    });
+    if (!result.ok) {
+      Alert.alert('Validation Error', result.error);
+      return;
+    }
 
-    onSave(savedEvent);
+    onSave(result.value);
   };
 
   // Sync endDate when startDate changes (if endDate is before startDate)
@@ -188,12 +193,13 @@ const OneTimeEventEditor: React.FC<OneTimeEventEditorProps> = ({
 
             <View style={styles.spacer} />
 
-            <SettingsInput
-              label="URL to Display"
-              value={url}
-              onChangeText={setUrl}
-              placeholder="https://example.com/promo"
-              keyboardType="url"
+            <EventContentEditor
+              contentType={contentType}
+              onContentTypeChange={setContentType}
+              text={contentText}
+              onTextChange={setContentText}
+              seconds={contentSeconds}
+              onSecondsChange={setContentSeconds}
             />
           </View>
 
